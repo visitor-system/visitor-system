@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Visitor Pass Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa, #e4ebf1);
+            margin: 0;
+        }
+
+        .login-card {
+            background: #fff;
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+            width: 360px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .login-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.18);
+        }
+
+        .login-card h4 {
+            margin-bottom: 25px;
+            font-weight: 600;
+            color: #333;
+            text-align: center;
+        }
+
+        .btn-role {
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .btn-role.active {
+            background: #3498db;
+            color: #fff;
+            border-color: #3498db;
+        }
+
+        .btn-role:hover {
+            background: #2980b9;
+            color: #fff;
+        }
+
+        input.form-control {
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        button[type="submit"] {
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        #loginError {
+            color: #e74c3c;
+            margin-top: 12px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        @media (max-width: 400px) {
+            .login-card {
+                width: 90%;
+                padding: 30px 20px;
+            }
+
+            .btn-role {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <h4>Visitor Pass Login</h4>
+        <form method="POST" action="auth.php">
+            <div class="mb-3 d-flex flex-wrap justify-content-between">
+                <button type="button" class="btn btn-outline-primary btn-role" id="btnHost"
+                    data-type="host">Host</button>
+                <button type="button" class="btn btn-outline-primary btn-role" id="btnAdmin"
+                    data-type="admin">Admin</button>
+                <button type="button" class="btn btn-outline-primary btn-role" id="btnSecurity"
+                    data-type="security">Security</button>
+            </div>
+
+            <input type="hidden" name="login_type" id="loginType" value="host">
+            <input type="email" name="email" class="form-control" placeholder="Email" required>
+            <input type="password" name="password" class="form-control" placeholder="Password" required>
+            <button type="submit" class="btn btn-primary w-100">Login</button>
+        </form>
+        <div id="loginError"></div>
+    </div>
+
+    <script>
+        const buttons = {
+            host: document.getElementById('btnHost'),
+            admin: document.getElementById('btnAdmin'),
+            security: document.getElementById('btnSecurity')
+        };
+        const loginType = document.getElementById('loginType');
+
+        function setActive(type) {
+            loginType.value = type;
+            Object.keys(buttons).forEach(key => buttons[key].classList.remove('active'));
+            buttons[type].classList.add('active');
+        }
+
+        // Assign click events
+        Object.keys(buttons).forEach(key => {
+            buttons[key].addEventListener('click', () => setActive(key));
+        });
+
+        // Default active button
+        setActive('host');
+
+        // Show error messages if any
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('error')) {
+            const el = document.getElementById('loginError');
+            if (params.get('error') === 'invalid') el.textContent = "Invalid email or password.";
+            else if (params.get('error') === 'wrongtype') el.textContent = "Wrong login type selected.";
+            else el.textContent = "Login error.";
+            el.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>
