@@ -7,7 +7,7 @@ error_reporting(E_ALL);
 
 // Check admin login
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
-    header("Location: ../pages/login.html");
+    header("Location: ../pages/login.php");
     exit;
 }
 

@@ -1,5 +1,5 @@
 <?php
-// manage_users.php
+// Manage_users.php
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
@@ -17,7 +17,7 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
 if (isset($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
     $conn->query("DELETE FROM users WHERE id = $delete_id");
-    header("Location: manage_users.php");
+    header("Location: Manage_users.php");
     exit;
 }
 
@@ -54,18 +54,18 @@ $completed_appointments = ($completed_appointments_result && $completed_appointm
 
 // Get monthly user registration data for chart
 $monthly_users = [];
-for($i = 11; $i >= 0; $i--) {
+for ($i = 11; $i >= 0; $i--) {
     $month = date('Y-m', strtotime("-$i months"));
     // Check if created_at column exists, otherwise use id as proxy
     $result = $conn->query("SHOW COLUMNS FROM users LIKE 'created_at'");
-    if($result && $result->num_rows > 0) {
+    if ($result && $result->num_rows > 0) {
         $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE DATE_FORMAT(created_at, '%Y-%m') = '$month'");
     } else {
         // Fallback: use id as proxy for registration (assuming higher id = newer user)
         $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE id > 0");
     }
-    
-    if($count_query && $count_query !== false) {
+
+    if ($count_query && $count_query !== false) {
         $count = $count_query->fetch_assoc()['total'];
     } else {
         $count = 0;
@@ -75,7 +75,7 @@ for($i = 11; $i >= 0; $i--) {
 
 // Get role distribution data
 $role_distribution_result = $conn->query("SELECT role, COUNT(*) as count FROM users WHERE status = 'Active' GROUP BY role");
-if($role_distribution_result && $role_distribution_result !== false) {
+if ($role_distribution_result && $role_distribution_result !== false) {
     $role_distribution = $role_distribution_result->fetch_all(MYSQLI_ASSOC);
 } else {
     $role_distribution = [];
@@ -83,10 +83,10 @@ if($role_distribution_result && $role_distribution_result !== false) {
 
 // Get appointment trends (last 7 days)
 $appointment_trends = [];
-for($i = 6; $i >= 0; $i--) {
+for ($i = 6; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
     $count_query = $conn->query("SELECT COUNT(*) as total FROM appointments WHERE DATE(appointment_time) = '$date'");
-    if($count_query && $count_query !== false) {
+    if ($count_query && $count_query !== false) {
         $count = $count_query->fetch_assoc()['total'];
     } else {
         $count = 0;
@@ -119,12 +119,12 @@ echo erp_header('Manage Users', $breadcrumbs);
 <div class="row g-4 mb-4">
     <!-- User Registration Chart -->
     <div class="col-lg-8">
-<div class="erp-card">
-    <div class="erp-card-header">
-        <h3 class="erp-card-title">
+        <div class="erp-card">
+            <div class="erp-card-header">
+                <h3 class="erp-card-title">
                     <i class="fas fa-chart-line"></i>
                     User Registration Trends
-        </h3>
+                </h3>
             </div>
             <div class="p-3">
                 <canvas id="userRegistrationChart" height="100"></canvas>
@@ -164,7 +164,7 @@ echo erp_header('Manage Users', $breadcrumbs);
             </div>
         </div>
     </div>
-    
+
     <!-- Quick Stats -->
     <div class="col-lg-4">
         <div class="erp-card">
@@ -232,124 +232,124 @@ echo erp_header('Manage Users', $breadcrumbs);
 
 <!-- Chart.js Scripts -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // User Registration Chart
-    const userRegCtx = document.getElementById('userRegistrationChart').getContext('2d');
-    new Chart(userRegCtx, {
-        type: 'line',
-        data: {
-            labels: <?= json_encode(array_column($monthly_users, 'month')) ?>,
-            datasets: [{
-                label: 'New Users',
-                data: <?= json_encode(array_column($monthly_users, 'count')) ?>,
-                borderColor: '#2563eb',
-                backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#2563eb',
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 2,
-                pointRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
+    document.addEventListener('DOMContentLoaded', function () {
+        // User Registration Chart
+        const userRegCtx = document.getElementById('userRegistrationChart').getContext('2d');
+        new Chart(userRegCtx, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode(array_column($monthly_users, 'month')) ?>,
+                datasets: [{
+                    label: 'New Users',
+                    data: <?= json_encode(array_column($monthly_users, 'count')) ?>,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#2563eb',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    pointRadius: 6
+                }]
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0,0,0,0.1)'
-                    }
-                },
-                x: {
-                    grid: {
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
                         display: false
                     }
-                }
-            }
-        }
-    });
-
-    // Role Distribution Chart
-    const roleDistCtx = document.getElementById('roleDistributionChart').getContext('2d');
-    new Chart(roleDistCtx, {
-        type: 'doughnut',
-        data: {
-            labels: <?= json_encode(array_column($role_distribution, 'role')) ?>,
-            datasets: [{
-                data: <?= json_encode(array_column($role_distribution, 'count')) ?>,
-                backgroundColor: [
-                    '#f59e0b',
-                    '#06b6d4', 
-                    '#ef4444',
-                    '#10b981'
-                ],
-                borderWidth: 0,
-                cutout: '60%'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 20,
-                        usePointStyle: true
-                    }
-                }
-            }
-        }
-    });
-
-    // Appointment Trends Chart
-    const appointmentTrendsCtx = document.getElementById('appointmentTrendsChart').getContext('2d');
-    new Chart(appointmentTrendsCtx, {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode(array_column($appointment_trends, 'date')) ?>,
-            datasets: [{
-                label: 'Appointments',
-                data: <?= json_encode(array_column($appointment_trends, 'count')) ?>,
-                backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                borderColor: '#10b981',
-                borderWidth: 1,
-                borderRadius: 4,
-                borderSkipped: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0,0,0,0.1)'
-                    }
                 },
-                x: {
-                    grid: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        // Role Distribution Chart
+        const roleDistCtx = document.getElementById('roleDistributionChart').getContext('2d');
+        new Chart(roleDistCtx, {
+            type: 'doughnut',
+            data: {
+                labels: <?= json_encode(array_column($role_distribution, 'role')) ?>,
+                datasets: [{
+                    data: <?= json_encode(array_column($role_distribution, 'count')) ?>,
+                    backgroundColor: [
+                        '#f59e0b',
+                        '#06b6d4',
+                        '#ef4444',
+                        '#10b981'
+                    ],
+                    borderWidth: 0,
+                    cutout: '60%'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    }
+                }
+            }
+        });
+
+        // Appointment Trends Chart
+        const appointmentTrendsCtx = document.getElementById('appointmentTrendsChart').getContext('2d');
+        new Chart(appointmentTrendsCtx, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode(array_column($appointment_trends, 'date')) ?>,
+                datasets: [{
+                    label: 'Appointments',
+                    data: <?= json_encode(array_column($appointment_trends, 'count')) ?>,
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: '#10b981',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
                         display: false
                     }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
                 }
             }
-        }
+        });
     });
-});
 </script>
 
 <?php echo erp_footer(); ?>

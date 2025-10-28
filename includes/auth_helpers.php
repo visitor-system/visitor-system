@@ -18,7 +18,7 @@ function is_logged_in()
 function require_role($required_role)
 {
     if (!is_logged_in()) {
-        header("Location: login.html");
+        header("Location: login.php");
         exit();
     }
 

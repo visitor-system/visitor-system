@@ -822,8 +822,8 @@ function erp_header($title, $breadcrumbs = [])
                         <div class="erp-nav-item">
                             <a href="manage_users.php"
                                 class="erp-nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'manage_users.php' ? 'active' : ''; ?>">
-                                <i class="erp-nav-icon fas fa-tachometer-alt"></i>
-                                <span class="erp-nav-text">manage Users</span>
+                                <i class="erp-nav-icon fas fa-users-cog"></i>
+                                <span class="erp-nav-text">Manage Users</span>
                             </a>
                         </div>
                         <div class="erp-nav-item">

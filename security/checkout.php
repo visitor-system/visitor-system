@@ -3,6 +3,7 @@ session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
+date_default_timezone_set('Asia/Kolkata');
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/erp_layout.php';
 
@@ -22,75 +23,45 @@ $query = "SELECT p.*, a.visitor_name, a.company, a.purpose, a.appointment_time, 
           LEFT JOIN users u ON a.host_id = u.id
           WHERE p.id = ?";
 
-// Check database connection
-if (!$conn) {
-    die("Database connection failed: " . mysqli_connect_error());
-}
-
-// Debug: Check if tables exist
-$tables_check = $conn->query("SHOW TABLES LIKE 'passes'");
-if (!$tables_check || $tables_check->num_rows == 0) {
-    die("Error: 'passes' table does not exist. Please run the database setup first.");
-}
-
-$tables_check2 = $conn->query("SHOW TABLES LIKE 'appointments'");
-if (!$tables_check2 || $tables_check2->num_rows == 0) {
-    die("Error: 'appointments' table does not exist. Please run the database setup first.");
-}
-
 $stmt = $conn->prepare($query);
-if (!$stmt) {
-    die("Prepare failed: " . $conn->error);
-}
-
 $stmt->bind_param("i", $pass_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $pass_data = $result->fetch_assoc();
 
 if (!$pass_data) {
-    header("Location: track_visitors.php");
+    echo "<script>window.close();</script>";
     exit;
 }
 
-// Handle check-out form submission
+// Handle check-out
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkout'])) {
-    $current_time = date('Y-m-d H:i:s');
-    
     if (empty($pass_data['checkin_time'])) {
         $error_message = "हा visitor अजून check-in केलेला नाही!";
     } else {
-        // Calculate time spent
+        $current_time = date('Y-m-d H:i:s');
         $checkin_time = strtotime($pass_data['checkin_time']);
         $checkout_time = strtotime($current_time);
-        $time_spent = $checkout_time - $checkin_time;
-        $hours = floor($time_spent / 3600);
-        $minutes = floor(($time_spent % 3600) / 60);
+
+        $time_spent_seconds = $checkout_time - $checkin_time;
+        $hours = floor($time_spent_seconds / 3600);
+        $minutes = floor(($time_spent_seconds % 3600) / 60);
         $time_spent_formatted = "{$hours}h {$minutes}m";
 
-        // Update pass status and check-out time
-        $update_query = "UPDATE passes SET status = 'out', checkout_time = ?, time_spent = ? WHERE id = ?";
+        $update_query = "UPDATE passes SET status='out', checkout_time=?, time_spent=? WHERE id=?";
         $update_stmt = $conn->prepare($update_query);
-        
-        if (!$update_stmt) {
-            $error_message = "Prepare failed for update: " . $conn->error;
+        $update_stmt->bind_param("ssi", $current_time, $time_spent_formatted, $pass_id);
+
+        if ($update_stmt->execute()) {
+            $success_message = "Visitor checked out successfully!";
+            // Refresh pass data
+            $stmt = $conn->prepare($query);
+            $stmt->bind_param("i", $pass_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $pass_data = $result->fetch_assoc();
         } else {
-            $update_stmt->bind_param("ssi", $current_time, $time_spent_formatted, $pass_id);
-            
-            if ($update_stmt->execute()) {
-                $success_message = "Visitor checked out successfully!";
-                
-                // Refresh updated visitor data safely
-                $stmt = $conn->prepare($query);
-                if ($stmt) {
-                    $stmt->bind_param("i", $pass_id);
-                    $stmt->execute();
-                    $result = $stmt->get_result();
-                    $pass_data = $result->fetch_assoc();
-                }
-            } else {
-                $error_message = "Error checking out visitor: " . $conn->error;
-            }
+            $error_message = "Error updating check-out: " . $conn->error;
         }
     }
 }
@@ -103,130 +74,87 @@ $breadcrumbs = [
 ];
 
 echo erp_header('Check Out Visitor', $breadcrumbs);
+
+function formatDateTime($datetime)
+{
+    return !empty($datetime) && $datetime != '0000-00-00 00:00:00' ? date('d M Y, h:i A', strtotime($datetime)) : '—';
+}
 ?>
 
-<!-- Alerts -->
 <?php if ($success_message): ?>
-    <?php echo erp_alert($success_message, 'success'); ?>
-    <script>
-        setTimeout(() => {
-            window.location.href = 'track_visitors.php';
-        }, 3000);
-    </script>
+    <?= erp_alert($success_message, 'success') ?>
+    <script>setTimeout(() => window.location.href = 'track_visitors.php', 2000);</script>
 <?php endif; ?>
-
 <?php if ($error_message): ?>
-    <?php echo erp_alert($error_message, 'danger'); ?>
+    <?= erp_alert($error_message, 'danger') ?>
 <?php endif; ?>
 
-<!-- Visitor Information -->
 <div class="erp-card">
     <div class="erp-card-header">
-        <h3 class="erp-card-title">
-            <i class="fas fa-user-times"></i>
-            Visitor Check-Out
-        </h3>
+        <h3 class="erp-card-title"><i class="fas fa-user-times"></i> Visitor Check-Out</h3>
     </div>
     <div class="erp-card-body">
         <div class="row g-4">
-            <!-- Visitor Details -->
             <div class="col-md-6">
                 <h5 class="text-primary mb-3">Visitor Information</h5>
                 <div class="row g-3">
-                    <div class="col-6">
-                        <strong>Pass Number:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['pass_number']) ?></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Visitor Name:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['visitor_name']) ?></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Company:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['company']) ?></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Mobile:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['mobile']) ?></span>
-                    </div>
-                    <div class="col-12">
-                        <strong>Purpose:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['purpose']) ?></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Whom to Meet:</strong><br>
-                        <span class="text-primary"><?= htmlspecialchars($pass_data['whom_to_meet']) ?></span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Host Name:</strong><br>
-                        <span class="text-success"><?= htmlspecialchars($pass_data['host_name']) ?></span>
-                    </div>
-                    <div class="col-12">
-                        <strong>Appointment Time:</strong><br>
-                        <span class="text-primary"><?= date('d M Y, h:i A', strtotime($pass_data['appointment_time'])) ?></span>
-                    </div>
+                    <div class="col-6"><strong>Pass Number:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['pass_number']) ?></span></div>
+                    <div class="col-6"><strong>Visitor Name:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['visitor_name']) ?></span></div>
+                    <div class="col-6"><strong>Company:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['company']) ?></span></div>
+                    <div class="col-6"><strong>Mobile:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['mobile']) ?></span></div>
+                    <div class="col-12"><strong>Purpose:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['purpose']) ?></span></div>
+                    <div class="col-6"><strong>Whom to Meet:</strong><br><span
+                            class="text-primary"><?= htmlspecialchars($pass_data['whom_to_meet']) ?></span></div>
+                    <div class="col-6"><strong>Host Name:</strong><br><span
+                            class="text-success"><?= htmlspecialchars($pass_data['host_name']) ?></span></div>
+                    <div class="col-12"><strong>Appointment Time:</strong><br><span
+                            class="text-primary"><?= formatDateTime($pass_data['appointment_time']) ?></span></div>
                 </div>
             </div>
-            
-            <!-- Check-out Form -->
+
             <div class="col-md-6">
                 <h5 class="text-warning mb-3">Check-Out Details</h5>
-                
+
                 <?php if ($pass_data['status'] == 'inside'): ?>
                     <form method="POST">
                         <div class="mb-3">
                             <label class="erp-form-label">Current Status</label>
-                            <div class="p-2 bg-success text-white rounded">
-                                <i class="fas fa-check-circle"></i> Currently Inside
-                            </div>
+                            <div class="p-2 bg-success text-white rounded"><i class="fas fa-check-circle"></i> Currently
+                                Inside</div>
                         </div>
-                        
-                        <div class="mb-3">
-                            <label class="erp-form-label">Check-in Time</label>
-                            <input type="text" class="erp-form-control" value="<?= date('d M Y, h:i A', strtotime($pass_data['checkin_time'])) ?>" readonly>
-                        </div>
-                        
+
+
                         <div class="mb-3">
                             <label class="erp-form-label">Check-out Time</label>
-                            <input type="text" class="erp-form-control" value="<?= date('d M Y, h:i A') ?>" readonly>
+                            <input type="text" class="erp-form-control" id="checkout_time" readonly>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label class="erp-form-label">Time Spent</label>
-                            <input type="text" class="erp-form-control" value="<?php 
-                                $checkin_time = strtotime($pass_data['checkin_time']);
-                                $current_time = time();
-                                $time_spent = $current_time - $checkin_time;
-                                $hours = floor($time_spent / 3600);
-                                $minutes = floor(($time_spent % 3600) / 60);
-                                echo "{$hours}h {$minutes}m";
-                            ?>" readonly>
+                            <input type="text" class="erp-form-control" id="time_spent" readonly>
                         </div>
-                        
+
                         <div class="d-grid">
-                            <button type="submit" name="checkout" class="erp-btn erp-btn-warning">
-                                <i class="fas fa-sign-out-alt"></i> Check Out Visitor
-                            </button>
+                            <button type="submit" name="checkout" class="erp-btn erp-btn-warning"><i
+                                    class="fas fa-sign-out-alt"></i> Check Out Visitor</button>
                         </div>
                     </form>
                 <?php elseif ($pass_data['status'] == 'waiting'): ?>
                     <div class="alert alert-warning">
                         <h5><i class="fas fa-exclamation-triangle"></i> Not Checked In</h5>
-                        <p class="mb-0">This visitor needs to be checked in first before checking out.</p>
+                        <p>This visitor must be checked in first.</p>
                     </div>
-                    
-                    <div class="d-grid">
-                        <a href="checkin.php?id=<?= $pass_id ?>" class="erp-btn erp-btn-success">
-                            <i class="fas fa-sign-in-alt"></i> Check In First
-                        </a>
-                    </div>
+                    <a href="checkin.php?id=<?= $pass_id ?>" class="erp-btn erp-btn-success"><i
+                            class="fas fa-sign-in-alt"></i> Check In First</a>
                 <?php else: ?>
                     <div class="alert alert-info">
-                        <h5><i class="fas fa-info-circle"></i> Already Checked Out</h5>
-                        <p class="mb-2"><strong>Check-in Time:</strong> <?= date('d M Y, h:i A', strtotime($pass_data['checkin_time'])) ?></p>
-                        <p class="mb-2"><strong>Check-out Time:</strong> <?= date('d M Y, h:i A', strtotime($pass_data['checkout_time'])) ?></p>
-                        <p class="mb-2"><strong>Time Spent:</strong> <?= htmlspecialchars($pass_data['time_spent']) ?></p>
-                        <p class="mb-0">This visitor has already completed their visit.</p>
+                        <h5><i class="fas fa-info-circle"></i> successfully Checked Out</h5>
+
                     </div>
                 <?php endif; ?>
             </div>
@@ -234,15 +162,25 @@ echo erp_header('Check Out Visitor', $breadcrumbs);
     </div>
 </div>
 
-<!-- Action Buttons -->
-<div class="row g-3 mt-4">
-    <div class="col-md-6">
-        <?php echo erp_link_button('Back to Visitor Tracking', 'track_visitors.php', 'secondary', '', 'fas fa-arrow-left'); ?>
-    </div>
-    <div class="col-md-6">
-        <?php echo erp_link_button('View All Visitors', 'track_visitors.php', 'primary', '', 'fas fa-users'); ?>
-    </div>
-</div>
+<script>
+    // Update check-out time and time spent dynamically
+    function updateCheckoutTime() {
+        const checkinTime = new Date("<?= $pass_data['checkin_time'] ?>");
+        const now = new Date();
+
+        // Format check-out time
+        const options = { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true };
+        document.getElementById('checkout_time').value = now.toLocaleString('en-US', options);
+
+        // Calculate time spent
+        const diffMs = now - checkinTime;
+        const hours = Math.floor(diffMs / 3600000);
+        const minutes = Math.floor((diffMs % 3600000) / 60000);
+        document.getElementById('time_spent').value = `${hours}h ${minutes}m`;
+    }
+
+    updateCheckoutTime();
+    setInterval(updateCheckoutTime, 1000); // Update every second
+</script>
 
 <?php echo erp_footer(); ?>
-

@@ -4,7 +4,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/erp_layout.php';
 
 if (!isset($_SESSION['user'])) {
-  header("Location: ../pages/login.html");
+  header("Location: ../pages/login.php");
   exit;
 }
 
@@ -15,9 +15,9 @@ if (isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'host') {
   $host_only_clause = " AND appointments.host_id = $host_id";
 }
 
-// Default From/To dates
-$from_input = $_GET['from'] ?? date('Y-m-d\T00:00');
-$to_input = $_GET['to'] ?? date('Y-m-d\TH:i');
+// Default From/To dates with 09:00 to 18:00
+$from_input = $_GET['from'] ?? date('Y-m-d') . 'T09:00';
+$to_input = $_GET['to'] ?? date('Y-m-d') . 'T18:00';
 
 function convertToSQLDateTime($dt)
 {
@@ -35,8 +35,8 @@ $search = $_GET['search'] ?? '';
 if ($search) {
   $clean_search = $conn->real_escape_string($search);
   $search_sql .= " AND (appointments.visitor_name LIKE '%$clean_search%' 
-                          OR passes.pass_number LIKE '%$clean_search%' 
-                          OR appointments.mobile LIKE '%$clean_search%')";
+                        OR passes.pass_number LIKE '%$clean_search%' 
+                        OR appointments.mobile LIKE '%$clean_search%')";
 }
 
 // Status filter
@@ -60,49 +60,18 @@ $checked_out = $conn->query("SELECT COUNT(*) as c FROM passes
                              JOIN appointments ON passes.appointment_id=appointments.id 
                              WHERE passes.status='out' $host_only_clause $date_sql")->fetch_assoc()['c'];
 
-// Pagination
-$limit = $_GET['limit'] ?? 10;
-$page = $_GET['page'] ?? 1;
-$offset = ($page - 1) * $limit;
-
-// Total records
-$total_query = "SELECT COUNT(*) as total FROM passes 
-                JOIN appointments ON passes.appointment_id = appointments.id
-                WHERE 1 $host_only_clause $search_sql $status_sql $date_sql";
-$total_result = $conn->query($total_query);
-$total_records = $total_result->fetch_assoc()['total'];
-$total_pages = ceil($total_records / $limit);
-
-// Fetch records
-$query = "SELECT passes.*, appointments.visitor_name, appointments.mobile, appointments.company, appointments.appointment_time
-          FROM passes 
-          JOIN appointments ON passes.appointment_id = appointments.id
-          WHERE 1 $host_only_clause $search_sql $status_sql $date_sql
-          ORDER BY passes.id DESC
-          LIMIT $limit OFFSET $offset";
-$result = $conn->query($query);
-
-// Prepare chart data (Appointments trends per day)
-// Step 1: Generate date range array
-$period = new DatePeriod(
-  new DateTime($from_sql),
-  new DateInterval('P1D'),
-  (new DateTime($to_sql))->modify('+1 day')
-);
-
-$chart_labels = [];
-$chart_waiting = [];
-$chart_inside = [];
-$chart_out = [];
-
-foreach ($period as $date) {
-  $chart_labels[$date->format('Y-m-d')] = $date->format('M d');
-  $chart_waiting[$date->format('Y-m-d')] = 0;
-  $chart_inside[$date->format('Y-m-d')] = 0;
-  $chart_out[$date->format('Y-m-d')] = 0;
+// Fetch records for popup (all)
+$all_records = [];
+$records_result = $conn->query("SELECT passes.*, appointments.visitor_name, appointments.mobile, appointments.company, appointments.appointment_time, passes.status 
+                                FROM passes 
+                                JOIN appointments ON passes.appointment_id=appointments.id
+                                WHERE 1 $host_only_clause $date_sql
+                                ORDER BY passes.id DESC");
+while ($row = $records_result->fetch_assoc()) {
+  $all_records[] = $row;
 }
 
-// Step 2: Fetch counts from database
+// Prepare chart data (Appointments trends per day)
 $chart_query = "SELECT DATE(appointments.appointment_time) as appt_date, 
                        SUM(CASE WHEN passes.status='waiting' THEN 1 ELSE 0 END) as waiting_count,
                        SUM(CASE WHEN passes.status='inside' THEN 1 ELSE 0 END) as inside_count,
@@ -114,21 +83,16 @@ $chart_query = "SELECT DATE(appointments.appointment_time) as appt_date,
                 ORDER BY DATE(appointments.appointment_time)";
 $chart_result = $conn->query($chart_query);
 
-// Step 3: Fill chart arrays
+$chart_labels = [];
+$chart_waiting = [];
+$chart_inside = [];
+$chart_out = [];
 while ($row = $chart_result->fetch_assoc()) {
-  $date = $row['appt_date'];
-  if (isset($chart_labels[$date])) {
-    $chart_waiting[$date] = intval($row['waiting_count']);
-    $chart_inside[$date] = intval($row['inside_count']);
-    $chart_out[$date] = intval($row['out_count']);
-  }
+  $chart_labels[] = date('M d', strtotime($row['appt_date']));
+  $chart_waiting[] = intval($row['waiting_count']);
+  $chart_inside[] = intval($row['inside_count']);
+  $chart_out[] = intval($row['out_count']);
 }
-
-// Convert associative arrays to indexed arrays for Chart.js
-$chart_labels_js = array_values($chart_labels);
-$chart_waiting_js = array_values($chart_waiting);
-$chart_inside_js = array_values($chart_inside);
-$chart_out_js = array_values($chart_out);
 
 // Breadcrumbs
 $breadcrumbs = [
@@ -140,31 +104,27 @@ echo erp_header('Dashboard', $breadcrumbs);
 
 <!-- Cards -->
 <div class="erp-stats-grid">
-  <?php
-  echo erp_stat_card('fas fa-user-check', $inside, 'Currently Inside', null, 'success');
-  echo erp_stat_card('fas fa-clock', $waiting, 'Pending Visits', null, 'warning');
-  echo erp_stat_card('fas fa-sign-out-alt', $checked_out, 'Checked Out', null, 'info');
-  ?>
+  <div class="erp-stat-card erp-click-card" data-status="inside">
+    <?= erp_stat_card('fas fa-user-check', $inside, 'Currently Inside', null, 'success'); ?>
+  </div>
+  <div class="erp-stat-card erp-click-card" data-status="waiting">
+    <?= erp_stat_card('fas fa-clock', $waiting, 'Pending Visits', null, 'warning'); ?>
+  </div>
+  <div class="erp-stat-card erp-click-card" data-status="out">
+    <?= erp_stat_card('fas fa-sign-out-alt', $checked_out, 'Checked Out', null, 'info'); ?>
+  </div>
 </div>
 
 <!-- Filters -->
 <form method="GET" class="row g-3 mb-4">
   <div class="col-md-2">
     <label class="erp-form-label">Date From</label>
-    <input type="datetime-local" name="from" class="erp-form-control" value="<?= htmlspecialchars($from_input) ?>">
+    <input type="datetime-local" id="from" name="from" class="erp-form-control"
+      value="<?= htmlspecialchars($from_input) ?>">
   </div>
   <div class="col-md-2">
     <label class="erp-form-label">Date To</label>
-    <input type="datetime-local" name="to" class="erp-form-control" value="<?= htmlspecialchars($to_input) ?>">
-  </div>
-  <div class="col-md-2">
-    <label class="erp-form-label">Status</label>
-    <select name="status" class="erp-form-control">
-      <option value="">All</option>
-      <option value="waiting" <?= $status_filter == 'waiting' ? 'selected' : '' ?>>Waiting</option>
-      <option value="inside" <?= $status_filter == 'inside' ? 'selected' : '' ?>>Inside</option>
-      <option value="out" <?= $status_filter == 'out' ? 'selected' : '' ?>>Out</option>
-    </select>
+    <input type="datetime-local" id="to" name="to" class="erp-form-control" value="<?= htmlspecialchars($to_input) ?>">
   </div>
   <div class="col-md-2 d-flex align-items-end">
     <button type="submit" class="erp-btn erp-btn-primary w-100">Search</button>
@@ -173,47 +133,96 @@ echo erp_header('Dashboard', $breadcrumbs);
 
 <!-- Appointment Trends Chart -->
 <div class="mb-4">
-  <h5>Appointment Trends (Bar Chart)</h5>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5>Appointment Trends (Chart)</h5>
+    <select id="chartType" class="erp-form-control" style="width:150px;">
+      <option value="bar" selected>Bar</option>
+      <option value="line">Line</option>
+      <option value="pie">Pie</option>
+      <option value="doughnut">Doughnut</option>
+    </select>
+  </div>
   <canvas id="appointmentTrendsChart" style="width:100%; max-height:400px;"></canvas>
 </div>
 
+<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+  const records = <?= json_encode($all_records) ?>;
+
   document.addEventListener("DOMContentLoaded", function () {
+    // Auto-close datetime pickers after selection
+    ['from', 'to'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', () => el.blur());
+    });
+
+    // Cards click popup
+    document.querySelectorAll('.erp-click-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const status = card.getAttribute('data-status');
+        const filtered = records.filter(r => r.status === status);
+        if (filtered.length === 0) {
+          Swal.fire('No records', `No visitors with status "${status}" found.`, 'info');
+          return;
+        }
+        let html = `<table style="width:100%;border-collapse:collapse;">
+                        <tr><th>ID</th><th>Name</th><th>Company</th><th>Mobile</th><th>Appointment Time</th></tr>`;
+        filtered.forEach(r => {
+          html += `<tr style="border-bottom:1px solid #ddd;">
+                            <td>${r.id}</td>
+                            <td>${r.visitor_name}</td>
+                            <td>${r.company}</td>
+                            <td>${r.mobile}</td>
+                            <td>${r.appointment_time}</td>
+                        </tr>`;
+        });
+        html += '</table>';
+        Swal.fire({
+          title: `Visitors: ${status}`,
+          html: html,
+          width: '700px',
+          showCloseButton: true,
+          confirmButtonText: 'Close'
+        });
+      });
+    });
+
+    // Appointment Trends Chart
     const ctx = document.getElementById('appointmentTrendsChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: <?= json_encode($chart_labels_js) ?>,
-        datasets: [
-          {
-            label: 'Waiting',
-            data: <?= json_encode($chart_waiting_js) ?>,
-            backgroundColor: 'rgba(255, 159, 64, 0.7)',
-          },
-          {
-            label: 'Inside',
-            data: <?= json_encode($chart_inside_js) ?>,
-            backgroundColor: 'rgba(54, 162, 235, 0.7)',
-          },
-          {
-            label: 'Out',
-            data: <?= json_encode($chart_out_js) ?>,
-            backgroundColor: 'rgba(75, 192, 192, 0.7)',
-          }
-        ]
-      },
-      options: {
+    const chartData = {
+      labels: <?= json_encode($chart_labels) ?>,
+      datasets: [
+        { label: 'Waiting', data: <?= json_encode($chart_waiting) ?>, backgroundColor: 'rgba(255, 159, 64, 0.7)' },
+        { label: 'Inside', data: <?= json_encode($chart_inside) ?>, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+        { label: 'Out', data: <?= json_encode($chart_out) ?>, backgroundColor: 'rgba(75, 192, 192, 0.7)' }
+      ]
+    };
+
+    let chartType = 'bar';
+    let chart = new Chart(ctx, { type: chartType, data: chartData, options: getChartOptions(chartType) });
+
+    document.getElementById('chartType').addEventListener('change', function () {
+      chartType = this.value;
+      chart.destroy();
+      chart = new Chart(ctx, { type: chartType, data: chartData, options: getChartOptions(chartType) });
+    });
+
+    function getChartOptions(type) {
+      const isPie = (type === 'pie' || type === 'doughnut');
+      return {
         responsive: true,
-        plugins: {
-          legend: { display: true },
-          tooltip: { mode: 'index', intersect: false }
-        },
-        scales: {
+        plugins: { legend: { display: true }, tooltip: { mode: 'index', intersect: false } },
+        scales: isPie ? {} : {
           x: { stacked: true, title: { display: true, text: 'Date' } },
           y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Appointments' } }
         }
-      }
-    });
+      };
+    }
   });
 </script>
+
+<?php
+echo erp_footer();
+?>

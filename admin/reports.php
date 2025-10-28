@@ -8,18 +8,18 @@ if (!isset($_SESSION['user'])) {
     exit;
 }
 
-// Filters with default current date
+// Filters with default current date and time
 $where = "WHERE 1=1";
 $page = $_GET['page'] ?? 1;
 $limit = $_GET['limit'] ?? 25;
 $offset = ($page - 1) * $limit;
 
-// Default to current date and time if not specified
-$from = !empty($_GET['from']) ? $_GET['from'] : date('Y-m-d\T00:00'); // Today start
-$to = !empty($_GET['to']) ? $_GET['to'] : date('Y-m-d\TH:i');        // Current time
+// Default From/To dates with 09:00 to 18:00
+$from = !empty($_GET['from']) ? $_GET['from'] : date('Y-m-d') . 'T09:00';
+$to = !empty($_GET['to']) ? $_GET['to'] : date('Y-m-d') . 'T18:00';
 
 if (!empty($from) && !empty($to)) {
-    $where .= " AND CAST(a.appointment_time AS DATE) BETWEEN '$from' AND '$to'";
+    $where .= " AND CAST(a.appointment_time AS DATETIME) BETWEEN '$from' AND '$to'";
 }
 if (!empty($_GET['company'])) {
     $company = $conn->real_escape_string($_GET['company']);
@@ -83,18 +83,13 @@ $breadcrumbs = [
     ['title' => 'Reports', 'icon' => 'chart-bar']
 ];
 
-echo erp_header('Security Reports', $breadcrumbs);
+echo erp_header(' Reports', $breadcrumbs);
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 
-<!-- Stats Cards -->
-<div class="erp-stats-grid">
-    <?php echo erp_stat_card($todayCount, 'Today\'s Visitors', 'calendar-day', 'primary'); ?>
-    <?php echo erp_stat_card($activeCount, 'Currently Inside', 'user-check', 'success'); ?>
-    <?php echo erp_stat_card($expiredCount, 'Checked Out', 'user-times', 'info'); ?>
-</div>
+
 
 <!-- Filters and Export -->
 <div class="erp-card mb-4">
@@ -108,21 +103,23 @@ echo erp_header('Security Reports', $breadcrumbs);
         <form method="GET" class="row g-3 mb-4">
             <div class="col-md-2">
                 <label class="form-label">From Date & Time</label>
-                <input type="datetime-local" name="from" class="form-control" value="<?= $_GET['from'] ?? $from ?>">
+                <input type="datetime-local" id="from" name="from" class="form-control"
+                    value="<?= htmlspecialchars($from) ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">To Date & Time</label>
-                <input type="datetime-local" name="to" class="form-control" value="<?= $_GET['to'] ?? $to ?>">
+                <input type="datetime-local" id="to" name="to" class="form-control"
+                    value="<?= htmlspecialchars($to) ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Company</label>
                 <input type="text" name="company" class="form-control" placeholder="Company name"
-                    value="<?= $_GET['company'] ?? '' ?>">
+                    value="<?= htmlspecialchars($_GET['company'] ?? '') ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Host</label>
                 <input type="text" name="host" class="form-control" placeholder="Host name"
-                    value="<?= $_GET['host'] ?? '' ?>">
+                    value="<?= htmlspecialchars($_GET['host'] ?? '') ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Status</label>
@@ -135,10 +132,10 @@ echo erp_header('Security Reports', $breadcrumbs);
             <div class="col-md-1">
                 <label class="form-label">Search</label>
                 <input type="text" name="search" class="form-control" placeholder="Search..."
-                    value="<?= $_GET['search'] ?? '' ?>">
+                    value="<?= htmlspecialchars($_GET['search'] ?? '') ?>">
             </div>
             <div class="col-md-1 d-flex align-items-end">
-                <?php echo erp_button('Search', 'primary', 'btn-sm', '', 'type="submit"'); ?>
+                <?= erp_button('Search', 'primary', 'btn-sm', '', 'type="submit"'); ?>
             </div>
         </form>
 
@@ -166,7 +163,7 @@ echo erp_header('Security Reports', $breadcrumbs);
     </div>
     <div class="erp-card-body">
         <?php if ($result && $result->num_rows > 0): ?>
-            <div class="table-responsive">
+            <div class="table-responsive" style="max-height:500px; overflow:auto;">
                 <table class="table table-bordered table-striped align-middle">
                     <thead>
                         <tr>
@@ -191,6 +188,7 @@ echo erp_header('Security Reports', $breadcrumbs);
                             $checkout = $row['checkout_time'] ? date("d M Y, h:i A", strtotime($row['checkout_time'])) : '—';
                             $appointment = $row['appointment_time'] ? date("d M Y, h:i A", strtotime($row['appointment_time'])) : '—';
                             $timeSpent = ($row['checkin_time'] && $row['checkout_time']) ? floor((strtotime($row['checkout_time']) - strtotime($row['checkin_time'])) / 60) . " mins" : '—';
+                            $statusLabel = ($row['checkout_time']) ? 'Completed' : ucfirst($row['status']);
                             ?>
                             <tr>
                                 <td><strong><?= htmlspecialchars($row['pass_number'] ?? 'N/A') ?></strong></td>
@@ -206,25 +204,9 @@ echo erp_header('Security Reports', $breadcrumbs);
                                 <td><?= $checkin ?></td>
                                 <td><?= $checkout ?></td>
                                 <td><?= $timeSpent ?></td>
-                                <td>
-
-                                    <?php if ($row['status'] == 'waiting'): ?>
-                                        <a href="checkin.php?id=<?= $row['id'] ?>" class="erp-btn erp-btn-success erp-btn-sm">
-                                            <i class="fas fa-sign-in-alt"></i> In
-                                        </a>
-                                    <?php elseif ($row['status'] == 'inside'): ?>
-                                        <a href="javascript:void(0)" class="erp-btn erp-btn-warning erp-btn-sm"
-                                            onclick="erpConfirm('Check Out Visitor', 'Are you sure you want to check out this visitor?', 'Yes, check out!', 'Cancel').then((result) => { if (result.isConfirmed) { window.location.href = 'checkout.php?id=<?= $row['id'] ?>'; } })">
-                                            <i class="fas fa-sign-out-alt"></i> Out
-                                        </a>
-                                    <?php else: ?>
-                                        <span class="text-muted">Completed</span>
-                                    <?php endif; ?>
-
-                                </td>
+                                <td><?= $statusLabel ?></td>
                             </tr>
                         <?php endwhile; ?>
-
                     </tbody>
                 </table>
             </div>
@@ -245,37 +227,38 @@ echo erp_header('Security Reports', $breadcrumbs);
         <?php else: ?>
             <?= erp_alert('No visitor records found matching your criteria.', 'info'); ?>
         <?php endif; ?>
-
     </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Auto-close datetime pickers
+        ['from', 'to'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', () => el.blur());
+        });
+
         window.printTableOnly = function () {
             const table = document.querySelector('.table-responsive table');
             if (!table) { alert('No table found to print'); return; }
             const printWindow = window.open('', '_blank');
             printWindow.document.write(`
-            <!DOCTYPE html><html><head><title>Visitor Report</title>
-            <style>
-                body{font-family:Arial,sans-serif;margin:20px;}
-                table{width:100%;border-collapse:collapse;margin-top:20px;}
-                th,td{border:1px solid #ddd;padding:8px;text-align:left;}
-                th{background:#f2f2f2;font-weight:bold;}
-                .badge{padding:4px 8px;border-radius:4px;font-size:12px;}
-                .badge-success{background:#28a745;color:#fff;}
-                .badge-danger{background:#dc3545;color:#fff;}
-                .badge-warning{background:#ffc107;color:#000;}
-                @media print{body{margin:0;} table{font-size:12px;}}
-            </style></head><body>
-                <h2>Visitor Pass Report</h2>
-                <p><strong>Generated on:</strong> ${new Date().toLocaleString()}</p>
-                ${table.outerHTML}
-            </body></html>`);
+        <!DOCTYPE html><html><head><title>Visitor Report</title>
+        <style>
+            body{font-family:Arial,sans-serif;margin:20px;}
+            table{width:100%;border-collapse:collapse;margin-top:20px;}
+            th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+            th{background:#f2f2f2;font-weight:bold;}
+            @media print{body{margin:0;} table{font-size:12px;}}
+        </style></head><body>
+            <h2>Visitor Pass Report</h2>
+            <p><strong>Generated on:</strong> ${new Date().toLocaleString()}</p>
+            ${table.outerHTML}
+        </body></html>`);
             printWindow.document.close();
             printWindow.print();
         };
     });
 </script>
 
-<?php echo erp_footer(); ?>
+<?php echo erp_footer();
