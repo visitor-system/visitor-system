@@ -86,6 +86,8 @@ $breadcrumbs = [
 echo erp_header('Visitor Tracking Dashboard', $breadcrumbs);
 ?>
 
+<script src="../includes/js/qrcode.min.js"></script>
+
 <div class="erp-card mb-4">
     <div class="erp-card-header">
         <h3 class="erp-card-title"><i class="fas fa-filter"></i> Filter Visitors</h3>
@@ -219,7 +221,12 @@ echo erp_header('Visitor Tracking Dashboard', $breadcrumbs);
                 else actionHtml = 'Completed';
 
                 html += `<tr data-id="${r.id}">
-                <td>${escapeHtml(r.pass_number)}</td>
+                <td>
+                <div id="passQR${r.id}" style="display: flex; justify-content: center; align-items: center; "></div>
+                <span id="passNo${r.id}" style="display: flex; justify-content: center; align-items: center; ">
+                    ${escapeHtml(r.pass_number)}
+                </span>
+                </td>
                 <td>${escapeHtml(r.visitor_name)}</td>
                 <td>${escapeHtml(r.company)}</td>
                 <td>${escapeHtml(r.purpose)}</td>
@@ -233,6 +240,22 @@ echo erp_header('Visitor Tracking Dashboard', $breadcrumbs);
             </tr>`;
             });
             tbody.innerHTML = html;
+
+            var allElements = document.querySelectorAll('[id^="passQR"]');
+            allElements.forEach(function (el) {
+                var qrContainer = el;
+                var rowId = (el.id).match(/\d+/g);
+                qrContainer.innerHTML = "";
+
+                var MCode = document.getElementById("passNo" + rowId).innerText;
+                if (MCode != "") {
+                    new QRCode(qrContainer, {
+                        text: MCode,
+                        width: 80,
+                        height: 80
+                    });
+                }
+            });
         }
 
         async function fetchAndUpdate() {

@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_appointment'])) 
 // Handle delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_appointment'])) {
     $id = intval($_POST['id']);
-    $stmt = $conn->prepare("DELETE FROM appointments WHERE id=? AND host_id=?");
+    $stmt = $conn->prepare("UPDATE appointments SET deleted = 1 WHERE id=? AND host_id=?");
     $stmt->bind_param("ii", $id, $_SESSION['user']['id']);
     $stmt->execute();
     $stmt->close();
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_appointment'])
 
 function fetchAppointments($conn, $host_id)
 {
-    $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time, status, appointment_time as raw_time FROM appointments WHERE host_id=? ORDER BY appointment_time DESC");
+    $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time, status, appointment_time as raw_time FROM appointments WHERE host_id=? AND deleted = 0 ORDER BY appointment_time DESC");
     $stmt->bind_param("i", $host_id);
     $stmt->execute();
     $res = $stmt->get_result();
