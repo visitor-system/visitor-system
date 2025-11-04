@@ -280,7 +280,7 @@ function erp_header($title, $breadcrumbs = [])
             }
 
             .erp-content-wrapper {
-                padding: 2rem;
+                padding: 1rem 2rem;
                 max-width: 1400px;
                 margin: 0 auto;
             }
@@ -289,8 +289,8 @@ function erp_header($title, $breadcrumbs = [])
             .erp-page-header {
                 background: white;
                 border-radius: var(--erp-radius-lg);
-                padding: 2rem;
-                margin-bottom: 2rem;
+                padding: 0rem 2rem;
+                margin-bottom: 1rem;
                 box-shadow: var(--erp-shadow);
                 border: 1px solid var(--erp-gray-200);
             }

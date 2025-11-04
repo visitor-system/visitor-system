@@ -1,12 +1,11 @@
 <?php
 require '../includes/db.php';
 
-// Default theme
+// Load theme
 $primary_color = '#667eea';
 $secondary_color = '#5b9df9';
-$system_logo = 'assets/default-logo.svg';
+$system_logo = 'assets/default-logo.jpg';
 
-// Load from database
 $theme_query = "SELECT primary_color, secondary_color, logo_path FROM system_theme LIMIT 1";
 $theme_result = $conn->query($theme_query);
 if ($theme_result && $theme_row = $theme_result->fetch_assoc()) {
@@ -25,20 +24,26 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <title>PDVS Visitor Management Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
             --primary-color:
-                <?php echo $primary_color;
-                ?>
+                <?php echo $primary_color; ?>
             ;
             --secondary-color:
-                <?php echo $secondary_color;
-                ?>
+                <?php echo $secondary_color; ?>
             ;
         }
 
-        /* Full-screen animated gradient */
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden;
+        }
+
         body::before {
             content: "";
             position: fixed;
@@ -66,46 +71,34 @@ $conn->close();
             }
         }
 
-        html,
-        body {
-            height: 100%;
-            margin: 0;
-            font-family: 'Poppins', sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-        }
-
-        /* Floating soft blobs */
         .blob {
             position: absolute;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.15);
-            filter: blur(50px);
-            animation: float 20s ease-in-out infinite;
+            filter: blur(70px);
+            animation: float 25s ease-in-out infinite;
             z-index: -1;
         }
 
         .blob.one {
-            width: 400px;
-            height: 400px;
-            top: 10%;
-            left: -100px;
+            width: 500px;
+            height: 500px;
+            top: 5%;
+            left: -150px;
             animation-delay: 0s;
         }
 
         .blob.two {
-            width: 300px;
-            height: 300px;
-            bottom: 5%;
-            right: -80px;
+            width: 400px;
+            height: 400px;
+            bottom: 0;
+            right: -120px;
             animation-delay: 5s;
         }
 
         .blob.three {
-            width: 250px;
-            height: 250px;
+            width: 350px;
+            height: 350px;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
@@ -120,39 +113,45 @@ $conn->close();
             }
 
             50% {
-                transform: translateY(-30px) translateX(20px);
+                transform: translateY(-50px) translateX(30px);
             }
         }
 
-        /* Glassmorphism card */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         .login-card {
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(15px);
-            padding: 50px 40px;
-            border-radius: 20px;
-            width: 380px;
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px);
+            padding: 60px 50px;
+            border-radius: 25px;
+            width: 450px;
+            max-width: 90%;
             text-align: center;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
             transition: transform 0.3s, box-shadow 0.3s;
         }
 
         .login-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 35px 100px rgba(0, 0, 0, 0.35);
         }
 
         .company-logo img {
-            max-height: 60px;
-            max-width: 200px;
-            margin-bottom: 15px;
+            max-height: 80px;
+            max-width: 250px;
+            margin-bottom: 20px;
         }
 
         .company-name {
-            font-size: 2rem;
+            font-size: 2.5rem;
             font-weight: 700;
             color: #fff;
-            margin-bottom: 20px;
-            text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+            margin-bottom: 30px;
+            text-shadow: 0 0 25px rgba(255, 255, 255, 0.8);
             animation: floatGlow 3s ease-in-out infinite;
         }
 
@@ -161,26 +160,26 @@ $conn->close();
             0%,
             100% {
                 transform: translateY(0);
-                text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+                text-shadow: 0 0 25px rgba(255, 255, 255, 0.8);
             }
 
             50% {
-                transform: translateY(-6px);
-                text-shadow: 0 0 35px rgba(255, 255, 255, 1);
+                transform: translateY(-8px);
+                text-shadow: 0 0 50px rgba(255, 255, 255, 1);
             }
         }
 
         .login-card h4 {
-            margin-bottom: 25px;
+            margin-bottom: 30px;
             font-weight: 600;
             color: #fff;
         }
 
         input.form-control {
-            border-radius: 12px;
-            padding: 14px;
-            margin-bottom: 18px;
-            font-size: 15px;
+            border-radius: 15px;
+            padding: 16px;
+            margin-bottom: 20px;
+            font-size: 16px;
             border: none;
             background: rgba(255, 255, 255, 0.3);
             color: #fff;
@@ -191,26 +190,26 @@ $conn->close();
         }
 
         input.form-control:focus {
-            background: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.45);
             outline: none;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
         }
 
         button[type="submit"] {
-            padding: 14px;
+            padding: 16px;
             font-weight: 600;
-            border-radius: 12px;
+            border-radius: 15px;
             background: var(--primary-color);
             color: #fff;
             border: none;
             width: 100%;
-            font-size: 16px;
+            font-size: 18px;
             transition: all 0.3s ease;
         }
 
         button[type="submit"]:hover {
             background: var(--secondary-color);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
             transform: translateY(-2px);
         }
 
@@ -218,13 +217,17 @@ $conn->close();
             color: #ff6b6b;
             margin-top: 15px;
             font-weight: 500;
-            font-size: 0.95rem;
+            font-size: 1rem;
         }
 
-        @media (max-width: 400px) {
+        @media (max-width: 500px) {
             .login-card {
-                width: 90%;
-                padding: 35px 25px;
+                width: 95%;
+                padding: 45px 30px;
+            }
+
+            .company-name {
+                font-size: 2rem;
             }
         }
     </style>
@@ -245,7 +248,6 @@ $conn->close();
 
         <h4>Visitor Pass Login</h4>
         <form method="POST" action="auth.php">
-            <input type="hidden" name="login_type" id="loginType" value="host" />
             <input type="email" name="email" class="form-control" placeholder="Email" required />
             <input type="password" name="password" class="form-control" placeholder="Password" required />
             <button type="submit">Login</button>
@@ -258,7 +260,6 @@ $conn->close();
         if (params.get("error")) {
             const el = document.getElementById("loginError");
             if (params.get("error") === "invalid") el.textContent = "Invalid email or password.";
-            else if (params.get("error") === "wrongtype") el.textContent = "Wrong login type selected.";
             else el.textContent = "Login error.";
             el.style.display = "block";
         }

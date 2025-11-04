@@ -10,176 +10,37 @@ if (!isset($_SESSION['user'])) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_appointment'])) {
-    $visitor_name = trim($_POST['visitor_name']);
-    $mobile = trim($_POST['mobile']);
-    $company = trim($_POST['company']);
-    $whom_to_meet = trim($_POST['whom_to_meet']);
-    $purpose = trim($_POST['purpose']);
-    $num_of_people = intval($_POST['num_of_people']);
-    $appointment_time = $_POST['appointment_time'];
+// Handle AJAX requests
+if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
+    $response = [];
+    $action = $_GET['ajax'];
+    $user_id = $_SESSION['user']['id'];
 
-    if (!preg_match('/^[0-9]{10}$/', $mobile)) {
-        echo json_encode(['success' => false, 'message' => 'Mobile number must be exactly 10 digits']);
-        exit;
-    }
+    $limit = 10;
+    $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+    $offset = ($page - 1) * $limit;
 
-    if (strtotime($appointment_time) < time()) {
-        echo json_encode(['success' => false, 'message' => 'Appointment time cannot be in the past']);
-        exit;
-    }
+    if ($action == 'load_table') {
+        $stmt = $conn->prepare("SELECT COUNT(*) as total FROM appointments WHERE host_id=? AND deleted=0");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $total = $res->fetch_assoc()['total'];
+        $totalPages = ceil($total / $limit);
+        $stmt->close();
 
-    $stmt = $conn->prepare("INSERT INTO appointments (visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, appointment_time, status, host_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
-    $stmt->bind_param("sssssisi", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $_SESSION['user']['id']);
-    $stmt->execute();
-    $appointment_id = $conn->insert_id;
-    $stmt->close();
+        $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time 
+            FROM appointments WHERE host_id=? AND deleted=0 ORDER BY id DESC LIMIT ? OFFSET ?");
+        $stmt->bind_param("iii", $user_id, $limit, $offset);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $appointments = $res->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
 
-    $pass_number = 'VP' . str_pad($appointment_id, 5, '0', STR_PAD_LEFT);
-    $qrDir = '../assets/qrcodes/';
-    if (!is_dir($qrDir))
-        mkdir($qrDir, 0777, true);
-    $qrPath = $qrDir . $pass_number . '.png';
-    QRcode::png('Visitor Pass ID: ' . $pass_number, $qrPath, QR_ECLEVEL_L, 4);
-
-    $stmt2 = $conn->prepare("INSERT INTO passes (appointment_id, pass_number, qr_code, status) VALUES (?, ?, ?, 'waiting')");
-    $stmt2->bind_param("iss", $appointment_id, $pass_number, $qrPath);
-    $stmt2->execute();
-    $stmt2->close();
-
-    echo json_encode([
-        'success' => true,
-        'redirect' => 'appointment_success.php',
-        'newAppointment' => [
-            'visitor_name' => $visitor_name,
-            'mobile' => $mobile,
-            'company' => $company,
-            'whom_to_meet' => $whom_to_meet,
-            'purpose' => $purpose,
-            'num_of_people' => $num_of_people,
-            'appointment_time' => str_replace('T', ' ', $appointment_time)
-        ]
-    ]);
-    exit;
-}
-
-// Handle edit
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_appointment'])) {
-    $id = intval($_POST['id']);
-    $visitor_name = trim($_POST['visitor_name']);
-    $mobile = trim($_POST['mobile']);
-    $company = trim($_POST['company']);
-    $whom_to_meet = trim($_POST['whom_to_meet']);
-    $purpose = trim($_POST['purpose']);
-    $num_of_people = intval($_POST['num_of_people']);
-    $appointment_time = $_POST['appointment_time'];
-
-    $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
-    $stmt->bind_param("sssssisii", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $id, $_SESSION['user']['id']);
-    $stmt->execute();
-    $stmt->close();
-
-    echo json_encode(['success' => true]);
-    exit;
-}
-
-// Handle delete
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_appointment'])) {
-    $id = intval($_POST['id']);
-    $stmt = $conn->prepare("UPDATE appointments SET deleted = 1 WHERE id=? AND host_id=?");
-    $stmt->bind_param("ii", $id, $_SESSION['user']['id']);
-    $stmt->execute();
-    $stmt->close();
-    echo json_encode(['success' => true]);
-    exit;
-}
-
-function fetchAppointments($conn, $host_id)
-{
-    $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time, status, appointment_time as raw_time FROM appointments WHERE host_id=? AND deleted = 0 ORDER BY appointment_time DESC");
-    $stmt->bind_param("i", $host_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $appointments = [];
-    while ($row = $res->fetch_assoc()) {
-        $appointments[] = $row;
-    }
-    $stmt->close();
-    return $appointments;
-}
-
-$appointments = fetchAppointments($conn, $_SESSION['user']['id']);
-$breadcrumbs = [
-    ['title' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'tachometer-alt'],
-    ['title' => 'Book Appointment', 'icon' => 'calendar-plus']
-];
-
-echo erp_header('Book Appointment', $breadcrumbs);
-?>
-
-<div class="erp-card mb-4">
-    <div class="erp-card-header">
-        <h5 class="erp-card-title"><i class="fas fa-calendar-plus me-2"></i>Book New Appointment</h5>
-    </div>
-    <div class="erp-card-body">
-        <form id="appointmentForm">
-            <input type="hidden" name="save_appointment" value="1">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Mobile Number</label>
-                    <input type="text" name="mobile" id="mobile" class="form-control" placeholder="Mobile" required>
-                    <div id="mobileError" class="text-danger mt-1" style="display:none;">Mobile number cannot exceed 10
-                        digits</div>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Visitor Name</label>
-                    <input type="text" name="visitor_name" class="form-control" placeholder="Visitor Name" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Company</label>
-                    <input type="text" name="company" class="form-control" placeholder="Company" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Host Name (You)</label>
-                    <input type="text" class="form-control" value="<?= htmlspecialchars($_SESSION['user']['name']) ?>"
-                        readonly>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Whom to Meet</label>
-                    <input type="text" name="whom_to_meet" class="form-control"
-                        placeholder="Person visitor wants to meet" required>
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Purpose of Visit</label>
-                    <textarea name="purpose" class="form-control" placeholder="Purpose" required rows="3"></textarea>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Number of People</label>
-                    <input type="number" name="num_of_people" class="form-control" min="1"
-                        placeholder="Number of People" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Appointment Date & Time</label>
-                    <?php $currentDateTime = date('Y-m-d\TH:i'); ?>
-                    <input type="datetime-local" name="appointment_time" class="form-control" required
-                        min="<?= $currentDateTime ?>" value="<?= $currentDateTime ?>" id="appointment_datetime">
-                </div>
-            </div>
-            <div class="mt-4 text-end">
-                <?= erp_button('Confirm Appointment', 'primary', '', 'fas fa-save', 'type="submit"'); ?>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Appointments Table -->
-<div class="erp-card mt-4">
-    <div class="erp-card-header">
-        <h5 class="erp-card-title"><i class="fas fa-list me-2"></i>Your Appointments</h5>
-    </div>
-    <div class="erp-card-body table-responsive">
-        <table class="table table-bordered table-striped" id="appointmentsTable">
+        ob_start();
+        ?>
+        <table class="table table-bordered table-striped">
             <thead>
                 <tr>
                     <th>#</th>
@@ -193,179 +54,308 @@ echo erp_header('Book Appointment', $breadcrumbs);
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody id="appointmentsBody">
-                <?php foreach ($appointments as $index => $appt): ?>
-                    <tr data-id="<?= $appt['id'] ?>" data-name="<?= htmlspecialchars($appt['visitor_name']) ?>"
-                        data-mobile="<?= htmlspecialchars($appt['mobile']) ?>"
-                        data-company="<?= htmlspecialchars($appt['company']) ?>"
-                        data-whom="<?= htmlspecialchars($appt['whom_to_meet']) ?>"
-                        data-purpose="<?= htmlspecialchars($appt['purpose']) ?>"
-                        data-num="<?= htmlspecialchars($appt['num_of_people']) ?>"
-                        data-time="<?= htmlspecialchars($appt['raw_time']) ?>">
-                        <td><?= $index + 1 ?></td>
-                        <td><?= htmlspecialchars($appt['visitor_name']) ?></td>
-                        <td><?= htmlspecialchars($appt['mobile']) ?></td>
-                        <td><?= htmlspecialchars($appt['company']) ?></td>
-                        <td><?= htmlspecialchars($appt['whom_to_meet']) ?></td>
-                        <td><?= htmlspecialchars($appt['purpose']) ?></td>
-                        <td><?= htmlspecialchars($appt['num_of_people']) ?></td>
-                        <td><?= $appt['appointment_time'] ?></td>
+            <tbody>
+                <?php foreach ($appointments as $idx => $a): ?>
+                    <tr>
+                        <td><?= $offset + $idx + 1 ?></td>
+                        <td><?= htmlspecialchars($a['visitor_name']) ?></td>
+                        <td><?= htmlspecialchars($a['mobile']) ?></td>
+                        <td><?= htmlspecialchars($a['company']) ?></td>
+                        <td><?= htmlspecialchars($a['whom_to_meet']) ?></td>
+                        <td><?= htmlspecialchars($a['purpose']) ?></td>
+                        <td><?= htmlspecialchars($a['num_of_people']) ?></td>
+                        <td><?= $a['appointment_time'] ?></td>
                         <td>
-                            <button class="btn btn-sm btn-warning editBtn"><i class="fas fa-edit"></i></button>
-                            <button class="btn btn-sm btn-danger deleteBtn"><i class="fas fa-trash-alt"></i></button>
+                            <button class="btn btn-sm btn-warning" onclick="editAppointment(<?= $a['id'] ?>)">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAppointment(<?= $a['id'] ?>)">Delete</button>
                         </td>
                     </tr>
                 <?php endforeach; ?>
+
             </tbody>
         </table>
-        <div class="mt-3 text-center">
-            <nav>
-                <ul class="pagination justify-content-center" id="pagination"></ul>
-            </nav>
-        </div>
+        <nav>
+            <ul class="pagination justify-content-center">
+                <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+                    <li class="page-item <?= $p == $page ? 'active' : '' ?>"><a class="page-link" href="#"
+                            onclick="loadAppointments(<?= $p ?>);return false;">
+                            <?= $p ?>
+                        </a></li>
+                <?php endfor; ?>
+            </ul>
+        </nav>
+        <?php
+        $response['html'] = ob_get_clean();
+        echo json_encode($response);
+        exit;
+    }
+
+    if ($action == 'get' && isset($_GET['id'])) {
+        $id = intval($_GET['id']);
+        $stmt = $conn->prepare("SELECT * FROM appointments WHERE id=? AND host_id=? AND deleted=0");
+        $stmt->bind_param("ii", $id, $user_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $data = $res->fetch_assoc();
+        $stmt->close();
+        $data['appointment_time'] = date('Y-m-d\TH:i', strtotime($data['appointment_time']));
+        echo json_encode($data);
+        exit;
+    }
+
+    if ($action == 'delete' && isset($_GET['id'])) {
+        $id = intval($_GET['id']);
+        $stmt = $conn->prepare("UPDATE appointments SET deleted=1 WHERE id=? AND host_id=?");
+        $stmt->bind_param("ii", $id, $user_id);
+        $stmt->execute();
+        $stmt->close();
+        $stmt2 = $conn->prepare("DELETE FROM passes WHERE appointment_id=?");
+        $stmt2->bind_param("i", $id);
+        $stmt2->execute();
+        $stmt2->close();
+        echo json_encode(['status' => 'success', 'message' => 'Appointment deleted successfully!']);
+        exit;
+    }
+}
+
+// Handle add/update form submission
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
+    $errors = [];
+    $visitor_name = trim($_POST['visitor_name'] ?? '');
+    $mobile = trim($_POST['mobile'] ?? '');
+    $company = trim($_POST['company'] ?? '');
+    $whom_to_meet = trim($_POST['whom_to_meet'] ?? '');
+    $purpose = trim($_POST['purpose'] ?? '');
+    $num_of_people = intval($_POST['num_of_people'] ?? 0);
+    $appointment_time = $_POST['appointment_time'] ?? '';
+    $edit_id = intval($_POST['edit_id'] ?? 0);
+
+    if ($visitor_name === '')
+        $errors['visitor_name'] = 'Please enter visitor name.';
+    if ($mobile === '')
+        $errors['mobile'] = 'Please enter mobile number.';
+    elseif (!preg_match('/^[0-9]{10}$/', $mobile))
+        $errors['mobile'] = 'Mobile must be 10 digits.';
+    if ($company === '')
+        $errors['company'] = 'Enter company name.';
+    if ($whom_to_meet === '')
+        $errors['whom_to_meet'] = 'Enter whom to meet.';
+    if ($purpose === '')
+        $errors['purpose'] = 'Enter purpose.';
+    if ($num_of_people <= 0)
+        $errors['num_of_people'] = 'Enter number of people.';
+    if ($appointment_time === '')
+        $errors['appointment_time'] = 'Select appointment time.';
+    elseif (strtotime($appointment_time) < time())
+        $errors['appointment_time'] = 'Cannot be in past.';
+
+    if (!empty($errors)) {
+        echo json_encode(['status' => 'error', 'errors' => $errors]);
+        exit;
+    }
+
+    $userid = $_SESSION['user']['id'];
+
+    if ($edit_id > 0) {
+        $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
+        $stmt->bind_param("sssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
+        $stmt->execute();
+        $stmt->close();
+        echo json_encode(['status' => 'success', 'message' => 'Appointment updated successfully!']);
+        exit;
+    } else {
+        $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,purpose,num_of_people,appointment_time,status,host_id) VALUES (?,?,?,?,?,?,?,'pending',?)");
+        $stmt->bind_param("sssssisi", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $userid);
+        $stmt->execute();
+        $appointment_id = $conn->insert_id;
+        $stmt->close();
+
+        $pass_number = 'VP' . str_pad($appointment_id, 5, '0', STR_PAD_LEFT);
+        $qrDir = '../assets/qrcodes/';
+        if (!is_dir($qrDir))
+            mkdir($qrDir, 0777, true);
+        $qrPath = $qrDir . $pass_number . '.png';
+        if (function_exists('imagecreate'))
+            QRcode::png('Visitor Pass ID: ' . $pass_number, $qrPath, QR_ECLEVEL_L, 4);
+        $stmt2 = $conn->prepare("INSERT INTO passes (appointment_id, pass_number, qr_code, status) VALUES (?,?,?,'waiting')");
+        $stmt2->bind_param("iss", $appointment_id, $pass_number, $qrPath);
+        $stmt2->execute();
+        $stmt2->close();
+
+        echo json_encode(['status' => 'success', 'message' => 'Appointment booked successfully!']);
+        exit;
+    }
+}
+
+$breadcrumbs = [
+    ['title' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'tachometer-alt'],
+    ['title' => 'Book Appointment', 'icon' => 'calendar-plus']
+];
+echo erp_header('Book Appointment', $breadcrumbs);
+?>
+
+<div id="alert-container"></div>
+
+<div class="erp-card mb-4 appointment-card">
+    <div class="erp-card-header">
+        <h5 class="erp-card-title"><i class="fas fa-calendar-plus me-2"></i>Book New Appointment</h5>
+    </div>
+    <div class="erp-card-body compact-form">
+        <form id="appointmentForm">
+            <input type="hidden" name="save_appointment" value="1">
+            <input type="hidden" name="edit_id" id="edit_id" value="">
+            <div class="row g-2">
+
+                <div class="col-md-3">
+                    <label>Mobile <span class="text-danger">*</span></label>
+                    <input type="text" id="mobile" name="mobile" class="form-control form-sm" maxlength="10">
+                    <div class="text-danger small" id="mobile_error"></div>
+                </div>
+                <div class="col-md-3">
+                    <label>Visitor Name <span class="text-danger">*</span></label>
+                    <input type="text" id="visitor_name" name="visitor_name" class="form-control form-sm">
+                    <div class="text-danger small" id="visitor_name_error"></div>
+                </div>
+                <div class="col-md-5">
+                    <label>Company <span class="text-danger">*</span></label>
+                    <input type="text" id="company" name="company" class="form-control form-sm">
+                    <div class="text-danger small" id="company_error"></div>
+                </div>
+                <div class="col-md-3">
+                    <label>Whom to Meet <span class="text-danger">*</span></label>
+                    <input type="text" id="whom_to_meet" name="whom_to_meet" class="form-control form-sm">
+                    <div class="text-danger small" id="whom_to_meet_error"></div>
+                </div>
+                <div class="col-3">
+                    <label>Purpose <span class="text-danger">*</span></label>
+                    <textarea id="purpose" name="purpose" class="form-control form-sm" rows="2"></textarea>
+                    <div class="text-danger small" id="purpose_error"></div>
+                </div>
+                <div class="col-md-3">
+                    <label>No. of People <span class="text-danger">*</span></label>
+                    <input type="number" id="num_of_people" name="num_of_people" class="form-control form-sm" min="1"
+                        value="1">
+                    <div class="text-danger small" id="num_of_people_error"></div>
+                </div>
+                <div class="col-md-3">
+                    <label>Appointment Date & Time <span class="text-danger">*</span></label>
+                    <input id="appointment_time" type="datetime-local" name="appointment_time"
+                        class="form-control form-sm"
+                        value="<?= htmlspecialchars($_POST['appointment_time'] ?? date('Y-m-d\TH:i')) ?>"
+                        min="<?= date('Y-m-d\TH:i') ?>">
+                    <div class="text-danger small" id="appointment_time_error"></div>
+                </div>
+            </div>
+            <div class="mt-3 text-end">
+                <?= erp_button('Confirm Appointment', 'primary btn-sm', '', 'fas fa-save', 'type="submit"') ?>
+            </div>
+        </form>
     </div>
 </div>
 
-<!-- Edit Modal -->
-<div class="modal fade" id="editModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <form id="editForm">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Appointment</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body row g-3">
-                    <input type="hidden" name="id" id="edit_id">
-                    <div class="col-md-6"><label>Visitor Name</label><input type="text" name="visitor_name"
-                            id="edit_name" class="form-control" required></div>
-                    <div class="col-md-6"><label>Mobile</label><input type="text" name="mobile" id="edit_mobile"
-                            class="form-control" required></div>
-                    <div class="col-md-6"><label>Company</label><input type="text" name="company" id="edit_company"
-                            class="form-control" required></div>
-                    <div class="col-md-6"><label>Whom to Meet</label><input type="text" name="whom_to_meet"
-                            id="edit_whom" class="form-control" required></div>
-                    <div class="col-12"><label>Purpose</label><textarea name="purpose" id="edit_purpose"
-                            class="form-control" required></textarea></div>
-                    <div class="col-md-6"><label>No. of People</label><input type="number" name="num_of_people"
-                            id="edit_num" class="form-control" required></div>
-                    <div class="col-md-6"><label>Appointment Time</label><input type="datetime-local"
-                            name="appointment_time" id="edit_time" class="form-control" required></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">Update</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </form>
-        </div>
+<div class="erp-card mt-4 appointment-list-card">
+    <div class="erp-card-header">
+        <h5 class="erp-card-title"><i class="fas fa-list me-2"></i>Your Appointments</h5>
     </div>
+    <div class="erp-card-body table-responsive" id="appointmentsTableContainer"></div>
 </div>
+
+<style>
+    .appointment-card {
+        background: #dfe0e0ff;
+        border-radius: 8px;
+    }
+
+    .compact-form .form-control {
+        padding: 4px 8px;
+        font-size: 13px;
+        height: 30px;
+    }
+
+    .compact-form textarea.form-control {
+        height: 30px;
+        resize: none;
+        overflow-y: hidden;
+        line-height: 1.2;
+        padding: 4px 8px;
+        font-size: 13px;
+    }
+
+    .compact-form label {
+        font-size: 13px;
+        margin-bottom: 3px;
+    }
+
+    .compact-form .row.g-2 {
+        row-gap: 0.5rem !important;
+    }
+
+    .appointment-list-card {
+        background: #fdfdfdff;
+        border: 1px solid #eee;
+    }
+</style>
 
 <script>
-    const mobileInput = document.getElementById('mobile');
-    const mobileError = document.getElementById('mobileError');
-    const datetimeInput = document.getElementById('appointment_datetime');
-    const appointmentsBody = document.getElementById('appointmentsBody');
-    const rowsPerPage = 5;
     let currentPage = 1;
 
-    mobileInput.addEventListener('input', () => {
-        if (mobileInput.value.length > 10) {
-            mobileError.style.display = 'block';
-            mobileInput.value = mobileInput.value.slice(0, 10);
-        } else {
-            mobileError.style.display = 'none';
+    function loadAppointments(page = 1) {
+        currentPage = page;
+        fetch('?ajax=load_table&page=' + page)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('appointmentsTableContainer').innerHTML = data.html;
+            });
+    }
+
+    function deleteAppointment(id) {
+        if (confirm('Are you sure you want to delete this appointment?')) {
+            fetch('?ajax=delete&id=' + id)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.getElementById('alert-container').innerHTML = '<div class="alert alert-success mt-2">' + data.message + '</div>';
+                        loadAppointments(currentPage);
+                    }
+                });
         }
-    });
-    datetimeInput.addEventListener('input', () => datetimeInput.blur());
+    }
+
+    loadAppointments();
 
     document.getElementById('appointmentForm').addEventListener('submit', function (e) {
         e.preventDefault();
-        const formData = new FormData(this);
-        fetch('', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.redirect) {
-                    window.location.href = data.redirect;
-                } else if (!data.success) {
-                    alert(data.message);
-                }
-            });
+        let fd = new FormData(this);
+        fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(data => {
+            ['visitor_name', 'mobile', 'company', 'whom_to_meet', 'purpose', 'num_of_people', 'appointment_time'].forEach(f => document.getElementById(f + '_error').innerText = '');
+            document.getElementById('alert-container').innerHTML = '';
+            if (data.status === 'error') {
+                for (let f in data.errors) document.getElementById(f + '_error').innerText = data.errors[f];
+            } else {
+                // ✅ Redirect to success page
+                window.location.href = 'appointment_success.php';
+            }
+        });
     });
 
-    function applyPagination() {
-        const rows = Array.from(appointmentsBody.querySelectorAll('tr'));
-        const totalPages = Math.ceil(rows.length / rowsPerPage);
-        rows.forEach((row, index) => {
-            row.style.display = (index >= (currentPage - 1) * rowsPerPage && index < currentPage * rowsPerPage) ? '' : 'none';
-            row.querySelector('td').textContent = index + 1;
+    function editAppointment(id) {
+        fetch('?ajax=get&id=' + id).then(r => r.json()).then(data => {
+            document.getElementById('visitor_name').value = data.visitor_name;
+            document.getElementById('mobile').value = data.mobile;
+            document.getElementById('company').value = data.company;
+            document.getElementById('whom_to_meet').value = data.whom_to_meet;
+            document.getElementById('purpose').value = data.purpose;
+            document.getElementById('num_of_people').value = data.num_of_people;
+            document.getElementById('appointment_time').value = data.appointment_time;
+            document.getElementById('edit_id').value = data.id;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
-        renderPagination(totalPages);
     }
-    function renderPagination(totalPages) {
-        const pagination = document.getElementById('pagination');
-        pagination.innerHTML = '';
-        for (let i = 1; i <= totalPages; i++) {
-            const li = document.createElement('li');
-            li.className = 'page-item' + (i === currentPage ? ' active' : '');
-            li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
-            li.addEventListener('click', (e) => {
-                e.preventDefault();
-                currentPage = i;
-                applyPagination();
-            });
-            pagination.appendChild(li);
-        }
-    }
-    applyPagination();
 
-    // Edit and Delete functionality
-    document.querySelectorAll('.editBtn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const tr = this.closest('tr');
-            document.getElementById('edit_id').value = tr.dataset.id;
-            document.getElementById('edit_name').value = tr.dataset.name;
-            document.getElementById('edit_mobile').value = tr.dataset.mobile;
-            document.getElementById('edit_company').value = tr.dataset.company;
-            document.getElementById('edit_whom').value = tr.dataset.whom;
-            document.getElementById('edit_purpose').value = tr.dataset.purpose;
-            document.getElementById('edit_num').value = tr.dataset.num;
-            document.getElementById('edit_time').value = tr.dataset.time.replace(' ', 'T');
-            new bootstrap.Modal(document.getElementById('editModal')).show();
-        });
-    });
-
-    document.getElementById('editForm').addEventListener('submit', function (e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        formData.append('edit_appointment', '1');
-        fetch('', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Appointment updated successfully!');
-                    location.reload();
-                }
-            });
-    });
-
-    document.querySelectorAll('.deleteBtn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            if (!confirm('Are you sure you want to delete this appointment?')) return;
-            const id = this.closest('tr').dataset.id;
-            const formData = new FormData();
-            formData.append('delete_appointment', '1');
-            formData.append('id', id);
-            fetch('', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Deleted successfully!');
-                        location.reload();
-                    }
-                });
-        });
-    });
+    const appointmentInput = document.getElementById('appointment_time');
+    appointmentInput.addEventListener('input', () => appointmentInput.blur());
+    appointmentInput.addEventListener('keydown', e => e.preventDefault());
+    appointmentInput.addEventListener('focus', () => { if (appointmentInput.showPicker) appointmentInput.showPicker(); });
 </script>
 
 <?php echo erp_footer(); ?>

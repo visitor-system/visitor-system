@@ -1,4 +1,7 @@
 <?php
+
+
+
 // create_user.php
 session_start();
 require '../includes/db.php'; // DB connection
@@ -40,7 +43,7 @@ foreach ($users as $user) {
     $email = $user['email'];
     $password = password_hash($user['password'], PASSWORD_DEFAULT); // PHP hash
     $role = $user['role'];
-    $status = 'active';
+    $status = 'Active'; // Match ENUM casing
     $department = $user['department'];
 
     // Check if user already exists
@@ -50,13 +53,17 @@ foreach ($users as $user) {
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         echo "$role user already exists.<br>";
+        $stmt->close();
         continue;
     }
     $stmt->close();
 
     // Insert user
-    $stmt = $conn->prepare("INSERT INTO users (name,username,contact,email,password,role,status,department) VALUES(?,?,?,?,?,?,?,?)");
-    $stmt->bind_param("ssssssss", $name, $username, $contact, $email, $password, $role, $status, $department);
+    $stmt = $conn->prepare("
+        INSERT INTO users (username, email, contact, role, password, status, department, name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->bind_param("ssssssss", $username, $email, $contact, $role, $password, $status, $department, $name);
     if ($stmt->execute()) {
         echo "$role user created successfully! Email: $email | Password: {$user['password']}<br>";
     } else {

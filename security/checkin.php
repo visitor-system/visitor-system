@@ -63,6 +63,12 @@ function formatDateTime($dt)
 
 <?php if ($success_message): ?>
     <?= erp_alert($success_message, 'success') ?>
+    <script>
+        // Apply same auto-back as checkout: 2 seconds
+        setTimeout(() => {
+            window.location.href = 'track_visitors.php';
+        }, 2000);
+    </script>
 <?php endif; ?>
 <?php if ($error_message): ?>
     <?= erp_alert($error_message, 'danger') ?>

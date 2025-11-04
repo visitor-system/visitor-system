@@ -1,13 +1,12 @@
 <?php
 // Manage_users.php
-if (session_status() == PHP_SESSION_NONE) {
+if (session_status() == PHP_SESSION_NONE)
     session_start();
-}
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/erp_layout.php';
 
-// Only admin can access
+// Only admin access
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
     header("Location: login.php");
     exit;
@@ -21,80 +20,52 @@ if (isset($_GET['delete'])) {
     exit;
 }
 
-// No search filters needed for analytics dashboard
+// --- FETCH STATS ---
+function fetch_count($conn, $query)
+{
+    $result = $conn->query($query);
+    return ($result && $result !== false) ? $result->fetch_assoc()['total'] : 0;
+}
 
-// Get user statistics with error handling
-$total_users_result = $conn->query("SELECT COUNT(*) as total FROM users");
-$total_users = ($total_users_result && $total_users_result !== false) ? $total_users_result->fetch_assoc()['total'] : 0;
+// Users stats
+$total_users = fetch_count($conn, "SELECT COUNT(*) as total FROM users");
+$active_users = fetch_count($conn, "SELECT COUNT(*) as total FROM users WHERE status='Active'");
+$admin_users = fetch_count($conn, "SELECT COUNT(*) as total FROM users WHERE role='admin' AND status='Active'");
+$host_users = fetch_count($conn, "SELECT COUNT(*) as total FROM users WHERE role='host' AND status='Active'");
+$security_users = fetch_count($conn, "SELECT COUNT(*) as total FROM users WHERE role='security' AND status='Active'");
 
-$active_users_result = $conn->query("SELECT COUNT(*) as total FROM users WHERE status = 'Active'");
-$active_users = ($active_users_result && $active_users_result !== false) ? $active_users_result->fetch_assoc()['total'] : 0;
+// Appointments stats
+$total_appointments = fetch_count($conn, "SELECT COUNT(*) as total FROM appointments");
+$today_appointments = fetch_count($conn, "SELECT COUNT(*) as total FROM appointments WHERE DATE(appointment_time)=CURDATE()");
+$pending_appointments = fetch_count($conn, "SELECT COUNT(*) as total FROM appointments a JOIN passes p ON a.id=p.appointment_id WHERE p.status='waiting'");
+$completed_appointments = fetch_count($conn, "SELECT COUNT(*) as total FROM appointments a JOIN passes p ON a.id=p.appointment_id WHERE p.status='out'");
 
-$admin_users_result = $conn->query("SELECT COUNT(*) as total FROM users WHERE role = 'admin' AND status = 'Active'");
-$admin_users = ($admin_users_result && $admin_users_result !== false) ? $admin_users_result->fetch_assoc()['total'] : 0;
-
-$host_users_result = $conn->query("SELECT COUNT(*) as total FROM users WHERE role = 'host' AND status = 'Active'");
-$host_users = ($host_users_result && $host_users_result !== false) ? $host_users_result->fetch_assoc()['total'] : 0;
-
-$security_users_result = $conn->query("SELECT COUNT(*) as total FROM users WHERE role = 'security' AND status = 'Active'");
-$security_users = ($security_users_result && $security_users_result !== false) ? $security_users_result->fetch_assoc()['total'] : 0;
-
-// Get appointment statistics with error handling
-$total_appointments_result = $conn->query("SELECT COUNT(*) as total FROM appointments");
-$total_appointments = ($total_appointments_result && $total_appointments_result !== false) ? $total_appointments_result->fetch_assoc()['total'] : 0;
-
-$today_appointments_result = $conn->query("SELECT COUNT(*) as total FROM appointments WHERE DATE(appointment_time) = CURDATE()");
-$today_appointments = ($today_appointments_result && $today_appointments_result !== false) ? $today_appointments_result->fetch_assoc()['total'] : 0;
-
-$pending_appointments_result = $conn->query("SELECT COUNT(*) as total FROM appointments a JOIN passes p ON a.id = p.appointment_id WHERE p.status = 'waiting'");
-$pending_appointments = ($pending_appointments_result && $pending_appointments_result !== false) ? $pending_appointments_result->fetch_assoc()['total'] : 0;
-
-$completed_appointments_result = $conn->query("SELECT COUNT(*) as total FROM appointments a JOIN passes p ON a.id = p.appointment_id WHERE p.status = 'out'");
-$completed_appointments = ($completed_appointments_result && $completed_appointments_result !== false) ? $completed_appointments_result->fetch_assoc()['total'] : 0;
-
-// Get monthly user registration data for chart
+// Monthly users (last 12 months)
 $monthly_users = [];
+$has_created_at = $conn->query("SHOW COLUMNS FROM users LIKE 'created_at'");
 for ($i = 11; $i >= 0; $i--) {
     $month = date('Y-m', strtotime("-$i months"));
-    // Check if created_at column exists, otherwise use id as proxy
-    $result = $conn->query("SHOW COLUMNS FROM users LIKE 'created_at'");
-    if ($result && $result->num_rows > 0) {
-        $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE DATE_FORMAT(created_at, '%Y-%m') = '$month'");
+    if ($has_created_at && $has_created_at->num_rows > 0) {
+        $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE DATE_FORMAT(created_at,'%Y-%m')='$month'");
     } else {
-        // Fallback: use id as proxy for registration (assuming higher id = newer user)
-        $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE id > 0");
+        $count_query = $conn->query("SELECT COUNT(*) as total FROM users WHERE id>0");
     }
-
-    if ($count_query && $count_query !== false) {
-        $count = $count_query->fetch_assoc()['total'];
-    } else {
-        $count = 0;
-    }
+    $count = ($count_query && $count_query !== false) ? $count_query->fetch_assoc()['total'] : 0;
     $monthly_users[] = ['month' => date('M Y', strtotime("-$i months")), 'count' => $count];
 }
 
-// Get role distribution data
-$role_distribution_result = $conn->query("SELECT role, COUNT(*) as count FROM users WHERE status = 'Active' GROUP BY role");
-if ($role_distribution_result && $role_distribution_result !== false) {
-    $role_distribution = $role_distribution_result->fetch_all(MYSQLI_ASSOC);
-} else {
-    $role_distribution = [];
-}
+// Role distribution
+$role_distribution_result = $conn->query("SELECT role, COUNT(*) as count FROM users WHERE status='Active' GROUP BY role");
+$role_distribution = ($role_distribution_result && $role_distribution_result !== false) ? $role_distribution_result->fetch_all(MYSQLI_ASSOC) : [];
 
-// Get appointment trends (last 7 days)
+// Appointment trends last 7 days
 $appointment_trends = [];
 for ($i = 6; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
-    $count_query = $conn->query("SELECT COUNT(*) as total FROM appointments WHERE DATE(appointment_time) = '$date'");
-    if ($count_query && $count_query !== false) {
-        $count = $count_query->fetch_assoc()['total'];
-    } else {
-        $count = 0;
-    }
+    $count_query = $conn->query("SELECT COUNT(*) as total FROM appointments WHERE DATE(appointment_time)='$date'");
+    $count = ($count_query && $count_query !== false) ? $count_query->fetch_assoc()['total'] : 0;
     $appointment_trends[] = ['date' => date('M d', strtotime("-$i days")), 'count' => $count];
 }
-
-// No user table needed for analytics dashboard
 
 // Breadcrumbs
 $breadcrumbs = [
@@ -105,137 +76,186 @@ $breadcrumbs = [
 echo erp_header('Manage Users', $breadcrumbs);
 ?>
 
-<!-- ERP Stats Cards -->
+<!-- STYLISH STATS CARDS (Clickable ERP-style) -->
+<style>
+    .erp-stats-grid {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .erp-stat-card {
+        flex: 1;
+        padding: 10px 12px;
+        font-size: 14px;
+        line-height: 1.2;
+        cursor: pointer;
+        text-align: center;
+        border-radius: 5px;
+        background: #f7f7f7;
+        transition: transform 0.2s;
+    }
+
+    .erp-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .erp-stat-card .stat-value {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 3px;
+    }
+
+    .erp-stat-card .stat-label {
+        font-size: 12px;
+        color: #555;
+    }
+
+    .popup-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+    .popup-table th,
+    .popup-table td {
+        padding: 5px;
+        border: 1px solid #ddd;
+        text-align: center;
+    }
+
+    .popup-table th {
+        background: #f1f1f1;
+    }
+</style>
+
 <div class="erp-stats-grid">
-    <?php echo erp_stat_card('fas fa-users', $total_users, 'Total Users', null, 'primary'); ?>
-    <?php echo erp_stat_card('fas fa-user-check', $active_users, 'Active Users', null, 'success'); ?>
-    <?php echo erp_stat_card('fas fa-calendar-check', $total_appointments, 'Total Appointments', null, 'info'); ?>
-    <?php echo erp_stat_card('fas fa-calendar-day', $today_appointments, 'Today\'s Appointments', null, 'warning'); ?>
-    <?php echo erp_stat_card('fas fa-clock', $pending_appointments, 'Pending Appointments', null, 'danger'); ?>
-    <?php echo erp_stat_card('fas fa-check-circle', $completed_appointments, 'Completed Appointments', null, 'success'); ?>
-</div>
-
-<!-- Analytics Dashboard -->
-<div class="row g-4 mb-4">
-    <!-- User Registration Chart -->
-    <div class="col-lg-8">
-        <div class="erp-card">
-            <div class="erp-card-header">
-                <h3 class="erp-card-title">
-                    <i class="fas fa-chart-line"></i>
-                    User Registration Trends
-                </h3>
-            </div>
-            <div class="p-3">
-                <canvas id="userRegistrationChart" height="100"></canvas>
-            </div>
-        </div>
+    <div class="erp-stat-card erp-click-card" data-type="total_users">
+        <div class="stat-value"><?= $total_users ?></div>
+        <div class="stat-label">Total Users</div>
     </div>
-
-    <!-- Role Distribution Chart -->
-    <div class="col-lg-4">
-        <div class="erp-card">
-            <div class="erp-card-header">
-                <h3 class="erp-card-title">
-                    <i class="fas fa-chart-pie"></i>
-                    Role Distribution
-                </h3>
-            </div>
-            <div class="p-3">
-                <canvas id="roleDistributionChart" height="200"></canvas>
-            </div>
-        </div>
+    <div class="erp-stat-card erp-click-card" data-type="total_appointments">
+        <div class="stat-value"><?= $total_appointments ?></div>
+        <div class="stat-label">Appointments</div>
+    </div>
+    <div class="erp-stat-card erp-click-card" data-type="pending_appointments">
+        <div class="stat-value"><?= $pending_appointments ?></div>
+        <div class="stat-label">Pending</div>
     </div>
 </div>
 
-<!-- Appointment Analytics -->
-<div class="row g-4 mb-4">
-    <!-- Appointment Trends -->
+<?php
+// Prepare data arrays for popup tables
+$allUsers = [];
+$user_result = $conn->query("SELECT * FROM users ORDER BY id DESC");
+while ($row = $user_result->fetch_assoc())
+    $allUsers[] = $row;
+
+$allAppointments = [];
+$app_result = $conn->query("SELECT a.*, p.status AS pass_status FROM appointments a LEFT JOIN passes p ON a.id=p.appointment_id ORDER BY a.id DESC");
+while ($row = $app_result->fetch_assoc())
+    $allAppointments[] = $row;
+?>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    const allUsersData = <?= json_encode($allUsers) ?>;
+    const allAppointmentsData = <?= json_encode($allAppointments) ?>;
+
+    document.querySelectorAll('.erp-click-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const type = card.getAttribute('data-type');
+            let html = '', filtered = [];
+
+            if (type === 'total_users') filtered = allUsersData;
+            else if (type === 'active_users') filtered = allUsersData.filter(u => u.status === 'Active');
+            else if (type === 'total_appointments') filtered = allAppointmentsData;
+            else if (type === 'pending_appointments') filtered = allAppointmentsData.filter(a => a.pass_status === 'waiting');
+            else if (type === 'completed_appointments') filtered = allAppointmentsData.filter(a => a.pass_status === 'out');
+
+            if (type.includes('users')) {
+                html = `<div style="max-height:350px; overflow:auto;"><table class="popup-table"><thead>
+                    <tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>`;
+                filtered.forEach(u => {
+                    html += `<tr><td>${u.id}</td><td>${u.username || u.name || '-'}</td><td>${u.email || '-'}</td><td>${u.role}</td><td>${u.status}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            } else {
+                html = `<div style="max-height:350px; overflow:auto;"><table class="popup-table"><thead>
+                    <tr><th>ID</th><th>Visitor Name</th><th>Appointment Time</th><th>Status</th></tr></thead><tbody>`;
+                filtered.forEach(a => {
+                    html += `<tr><td>${a.id}</td><td>${a.visitor_name || '-'}</td><td>${a.appointment_time || '-'}</td><td>${a.pass_status || '-'}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+
+            Swal.fire({
+                title: `Records: ${card.querySelector('.stat-label').innerText}`,
+                html: html,
+                width: '750px',
+                showCloseButton: true,
+                confirmButtonText: 'Close'
+            });
+        });
+    });
+</script>
+
+<!-- DASHBOARD CHARTS -->
+<div class="row g-3 my-3">
+
+    <!-- Left Side Charts -->
     <div class="col-lg-8">
-        <div class="erp-card">
-            <div class="erp-card-header">
-                <h3 class="erp-card-title">
-                    <i class="fas fa-chart-bar"></i>
-                    Appointment Trends (Last 7 Days)
-                </h3>
-            </div>
-            <div class="p-3">
-                <canvas id="appointmentTrendsChart" height="100"></canvas>
-            </div>
+        <div class="erp-card p-3 mb-3" style="margin-bottom:1.5rem;">
+            <h5><i class="fas fa-chart-line"></i> User Registration Trends</h5>
+            <canvas id="userRegistrationChart" height="80"></canvas>
+        </div>
+
+        <div class="erp-card p-3" style="margin-top:1rem;">
+            <h5><i class="fas fa-calendar-alt"></i> Appointment Trends (Last 7 Days)</h5>
+            <canvas id="appointmentTrendsChart" height="180" style="width:100%; margin-top:0.5rem;"></canvas>
         </div>
     </div>
 
-    <!-- Quick Stats -->
-    <div class="col-lg-4">
-        <div class="erp-card">
-            <div class="erp-card-header">
-                <h3 class="erp-card-title">
-                    <i class="fas fa-tachometer-alt"></i>
-                    System Overview
-                </h3>
-            </div>
-            <div class="p-3">
-                <div class="row g-3">
-                    <div class="col-6">
-                        <div class="text-center">
-                            <div class="h4 text-primary mb-1"><?= $admin_users ?></div>
-                            <small class="text-muted">Admins</small>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="text-center">
-                            <div class="h4 text-info mb-1"><?= $host_users ?></div>
-                            <small class="text-muted">Hosts</small>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="text-center">
-                            <div class="h4 text-danger mb-1"><?= $security_users ?></div>
-                            <small class="text-muted">Security</small>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="text-center">
-                            <div class="h4 text-success mb-1"><?= $active_users ?></div>
-                            <small class="text-muted">Active</small>
-                        </div>
-                    </div>
+    <!-- Right Side Overview + Role Distribution -->
+    <div class="col-lg-4 d-flex flex-column gap-3">
+        <!-- System Overview -->
+        <div class="erp-card p-3">
+            <h5><i class="fas fa-tachometer-alt"></i> System Overview</h5>
+            <div class="d-flex flex-wrap gap-1 justify-content-between mt-2">
+                <div class="text-center flex-fill bg-light rounded py-1 px-1">
+                    <div class="h6 text-primary mb-0"><?= $admin_users ?></div>
+                    <small>Admins</small>
+                </div>
+                <div class="text-center flex-fill bg-light rounded py-1 px-1">
+                    <div class="h6 text-info mb-0"><?= $host_users ?></div>
+                    <small>Hosts</small>
+                </div>
+                <div class="text-center flex-fill bg-light rounded py-1 px-1">
+                    <div class="h6 text-danger mb-0"><?= $security_users ?></div>
+                    <small>Security</small>
+                </div>
+                <div class="text-center flex-fill bg-light rounded py-1 px-1">
+                    <div class="h6 text-success mb-0"><?= $active_users ?></div>
+                    <small>Active</small>
                 </div>
             </div>
         </div>
+
+        <!-- Role Distribution -->
+        <div class="erp-card p-3">
+            <h5 style="font-size: 0.95rem;"><i class="fas fa-chart-pie"></i> Role Distribution</h5>
+            <canvas id="roleDistributionChart" height="140"></canvas>
+        </div>
     </div>
+
 </div>
 
-<!-- Quick Actions -->
-<div class="erp-card">
-    <div class="erp-card-header">
-        <h3 class="erp-card-title">
-            <i class="fas fa-bolt"></i>
-            Quick Actions
-        </h3>
-    </div>
-    <div class="row g-3">
-        <div class="col-md-3">
-            <?php echo erp_link_button('Add User', 'User_creation.php', 'primary', 'erp-btn-sm', 'fas fa-plus'); ?>
-        </div>
-        <div class="col-md-3">
-            <?php echo erp_link_button('Manage Users', 'User_creation.php', 'success', 'erp-btn-sm', 'fas fa-users'); ?>
-        </div>
-        <div class="col-md-3">
-            <?php echo erp_link_button('User Reports', 'reports.php', 'warning', 'erp-btn-sm', 'fas fa-chart-bar'); ?>
-        </div>
-        <div class="col-md-3">
-            <?php echo erp_link_button('System Settings', 'appearance.php', 'info', 'erp-btn-sm', 'fas fa-cog'); ?>
-        </div>
-    </div>
-</div>
-
-<!-- Chart.js Scripts -->
+<!-- Chart.js -->
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // User Registration Chart
-        const userRegCtx = document.getElementById('userRegistrationChart').getContext('2d');
-        new Chart(userRegCtx, {
+
+        new Chart(document.getElementById('userRegistrationChart'), {
             type: 'line',
             data: {
                 labels: <?= json_encode(array_column($monthly_users, 'month')) ?>,
@@ -243,112 +263,42 @@ echo erp_header('Manage Users', $breadcrumbs);
                     label: 'New Users',
                     data: <?= json_encode(array_column($monthly_users, 'count')) ?>,
                     borderColor: '#2563eb',
-                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                    borderWidth: 3,
+                    backgroundColor: 'rgba(37,99,235,0.1)',
                     fill: true,
                     tension: 0.4,
-                    pointBackgroundColor: '#2563eb',
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 2,
-                    pointRadius: 6
+                    pointRadius: 4
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0,0,0,0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
         });
 
-        // Role Distribution Chart
-        const roleDistCtx = document.getElementById('roleDistributionChart').getContext('2d');
-        new Chart(roleDistCtx, {
+        new Chart(document.getElementById('roleDistributionChart'), {
             type: 'doughnut',
             data: {
                 labels: <?= json_encode(array_column($role_distribution, 'role')) ?>,
                 datasets: [{
                     data: <?= json_encode(array_column($role_distribution, 'count')) ?>,
-                    backgroundColor: [
-                        '#f59e0b',
-                        '#06b6d4',
-                        '#ef4444',
-                        '#10b981'
-                    ],
-                    borderWidth: 0,
+                    backgroundColor: ['#f59e0b', '#06b6d4', '#ef4444', '#10b981'],
                     cutout: '60%'
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true
-                        }
-                    }
-                }
-            }
+            options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true } } } }
         });
 
-        // Appointment Trends Chart
-        const appointmentTrendsCtx = document.getElementById('appointmentTrendsChart').getContext('2d');
-        new Chart(appointmentTrendsCtx, {
+        new Chart(document.getElementById('appointmentTrendsChart'), {
             type: 'bar',
             data: {
                 labels: <?= json_encode(array_column($appointment_trends, 'date')) ?>,
                 datasets: [{
                     label: 'Appointments',
                     data: <?= json_encode(array_column($appointment_trends, 'count')) ?>,
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                    borderColor: '#10b981',
-                    borderWidth: 1,
-                    borderRadius: 4,
-                    borderSkipped: false
+                    backgroundColor: 'rgba(16,185,129,0.8)',
+                    borderRadius: 4
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0,0,0,0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
         });
+
     });
 </script>
 

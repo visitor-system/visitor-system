@@ -53,14 +53,18 @@ $date_sql = " AND appointments.appointment_time BETWEEN '$from_sql' AND '$to_sql
 $inside = $conn->query("SELECT COUNT(*) as c FROM passes 
                         JOIN appointments ON passes.appointment_id=appointments.id 
                         WHERE passes.status='inside' $host_only_clause $date_sql")->fetch_assoc()['c'];
+
 $waiting = $conn->query("SELECT COUNT(*) as c FROM passes 
                          JOIN appointments ON passes.appointment_id=appointments.id 
                          WHERE passes.status='waiting' $host_only_clause $date_sql")->fetch_assoc()['c'];
+
 $checked_out = $conn->query("SELECT COUNT(*) as c FROM passes 
                              JOIN appointments ON passes.appointment_id=appointments.id 
-                             WHERE passes.status='out' $host_only_clause $date_sql")->fetch_assoc()['c'];
+                             WHERE passes.checkin_time IS NOT NULL 
+                               AND passes.checkout_time IS NOT NULL
+                               $host_only_clause $date_sql")->fetch_assoc()['c'];
 
-// Fetch records for popup (all)
+// Fetch records for popup
 $all_records = [];
 $records_result = $conn->query("SELECT passes.*, appointments.visitor_name, appointments.mobile, appointments.company, appointments.appointment_time, passes.status 
                                 FROM passes 
@@ -71,11 +75,11 @@ while ($row = $records_result->fetch_assoc()) {
   $all_records[] = $row;
 }
 
-// Prepare chart data (Appointments trends per day)
+// Chart data
 $chart_query = "SELECT DATE(appointments.appointment_time) as appt_date, 
                        SUM(CASE WHEN passes.status='waiting' THEN 1 ELSE 0 END) as waiting_count,
                        SUM(CASE WHEN passes.status='inside' THEN 1 ELSE 0 END) as inside_count,
-                       SUM(CASE WHEN passes.status='out' THEN 1 ELSE 0 END) as out_count
+                       SUM(CASE WHEN passes.checkin_time IS NOT NULL AND passes.checkout_time IS NOT NULL THEN 1 ELSE 0 END) as out_count
                 FROM passes 
                 JOIN appointments ON passes.appointment_id = appointments.id
                 WHERE 1 $host_only_clause $date_sql
@@ -94,29 +98,99 @@ while ($row = $chart_result->fetch_assoc()) {
   $chart_out[] = intval($row['out_count']);
 }
 
-// Breadcrumbs
-$breadcrumbs = [
-  ['title' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'tachometer-alt']
-];
 
+$breadcrumbs = [];
 echo erp_header('Dashboard', $breadcrumbs);
 ?>
+
+<style>
+  .erp-stats-grid {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .erp-stat-card {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.2;
+    cursor: pointer;
+    text-align: center;
+    border-radius: 5px;
+    background: #f7f7f7;
+    transition: transform 0.2s;
+  }
+
+  .erp-stat-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .erp-stat-card .stat-value {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .erp-stat-card .stat-label {
+    font-size: 12px;
+    color: #555;
+  }
+
+  #appointmentTrendsChart {
+    max-height: 300px;
+  }
+
+  form.row.g-3.mb-4 {
+    margin-bottom: 10px;
+  }
+
+  .erp-form-label {
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .erp-form-control {
+    font-size: 13px;
+    padding: 3px 6px;
+  }
+
+  .popup-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .popup-table th,
+  .popup-table td {
+    padding: 6px 4px;
+    border: 1px solid #ddd;
+    text-align: center;
+  }
+
+  .popup-table th {
+    background: #f1f1f1;
+  }
+</style>
 
 <!-- Cards -->
 <div class="erp-stats-grid">
   <div class="erp-stat-card erp-click-card" data-status="inside">
-    <?= erp_stat_card('fas fa-user-check', $inside, 'Currently Inside', null, 'success'); ?>
+    <div class="stat-value"><?= $inside ?></div>
+    <div class="stat-label">Currently Inside</div>
   </div>
   <div class="erp-stat-card erp-click-card" data-status="waiting">
-    <?= erp_stat_card('fas fa-clock', $waiting, 'Pending Visits', null, 'warning'); ?>
+    <div class="stat-value"><?= $waiting ?></div>
+    <div class="stat-label">Pending Visits</div>
   </div>
   <div class="erp-stat-card erp-click-card" data-status="out">
-    <?= erp_stat_card('fas fa-sign-out-alt', $checked_out, 'Checked Out', null, 'info'); ?>
+    <div class="stat-value"><?= $checked_out ?></div>
+    <div class="stat-label">Checked Out</div>
   </div>
 </div>
 
 <!-- Filters -->
-<form method="GET" class="row g-3 mb-4">
+<form method="GET" class="row g-3 mb-2">
   <div class="col-md-2">
     <label class="erp-form-label">Date From</label>
     <input type="datetime-local" id="from" name="from" class="erp-form-control"
@@ -131,98 +205,75 @@ echo erp_header('Dashboard', $breadcrumbs);
   </div>
 </form>
 
-<!-- Appointment Trends Chart -->
-<div class="mb-4">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5>Appointment Trends (Chart)</h5>
-    <select id="chartType" class="erp-form-control" style="width:150px;">
-      <option value="bar" selected>Bar</option>
-      <option value="line">Line</option>
-      <option value="pie">Pie</option>
-      <option value="doughnut">Doughnut</option>
-    </select>
-  </div>
-  <canvas id="appointmentTrendsChart" style="width:100%; max-height:400px;"></canvas>
+<!-- Chart Type Dropdown -->
+<div class="mb-2" style="display:flex; justify-content:flex-end; gap:5px; align-items:center;">
+  <label for="chartType" style="font-size:13px;">Chart Type:</label>
+  <select id="chartType" class="erp-form-control" style="width:120px; font-size:13px;">
+    <option value="bar" selected>Bar</option>
+    <option value="line">Line</option>
+    <option value="pie">Pie</option>
+    <option value="doughnut">Doughnut</option>
+  </select>
 </div>
 
-<!-- Scripts -->
+<!-- Chart -->
+<div class="mb-3">
+  <canvas id="appointmentTrendsChart"></canvas>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
   const records = <?= json_encode($all_records) ?>;
 
   document.addEventListener("DOMContentLoaded", function () {
-    // Auto-close datetime pickers after selection
-    ['from', 'to'].forEach(id => {
-      const el = document.getElementById(id);
-      el.addEventListener('input', () => el.blur());
-    });
+    // Auto-close datetime pickers
+    ['from', 'to'].forEach(id => { document.getElementById(id).addEventListener('input', e => e.target.blur()); });
 
-    // Cards click popup
+    // Card click popup
     document.querySelectorAll('.erp-click-card').forEach(card => {
       card.addEventListener('click', () => {
         const status = card.getAttribute('data-status');
-        const filtered = records.filter(r => r.status === status);
-        if (filtered.length === 0) {
+        let filtered = status === 'out' ? records.filter(r => r.checkin_time && r.checkout_time)
+          : records.filter(r => r.status === status);
+
+        if (!filtered.length) {
           Swal.fire('No records', `No visitors with status "${status}" found.`, 'info');
           return;
         }
-        let html = `<table style="width:100%;border-collapse:collapse;">
-                        <tr><th>ID</th><th>Name</th><th>Company</th><th>Mobile</th><th>Appointment Time</th></tr>`;
-        filtered.forEach(r => {
-          html += `<tr style="border-bottom:1px solid #ddd;">
-                            <td>${r.id}</td>
-                            <td>${r.visitor_name}</td>
-                            <td>${r.company}</td>
-                            <td>${r.mobile}</td>
-                            <td>${r.appointment_time}</td>
-                        </tr>`;
-        });
-        html += '</table>';
-        Swal.fire({
-          title: `Visitors: ${status}`,
-          html: html,
-          width: '700px',
-          showCloseButton: true,
-          confirmButtonText: 'Close'
-        });
+
+        let html = `<div style="max-height:350px; overflow:auto;">
+                    <table class="popup-table">
+                      <thead>
+                        <tr><th>ID</th><th>Name</th><th>Company</th><th>Mobile</th><th>Appointment</th></tr>
+                      </thead><tbody>`;
+        filtered.forEach(r => { html += `<tr><td>${r.id}</td><td>${r.visitor_name}</td><td>${r.company}</td><td>${r.mobile}</td><td>${r.appointment_time}</td></tr>`; });
+        html += `</tbody></table></div>`;
+
+        Swal.fire({ title: `Visitors: ${status}`, html: html, width: '700px', showCloseButton: true, confirmButtonText: 'Close' });
       });
     });
 
-    // Appointment Trends Chart
+    // Chart
     const ctx = document.getElementById('appointmentTrendsChart').getContext('2d');
     const chartData = {
       labels: <?= json_encode($chart_labels) ?>,
       datasets: [
-        { label: 'Waiting', data: <?= json_encode($chart_waiting) ?>, backgroundColor: 'rgba(255, 159, 64, 0.7)' },
-        { label: 'Inside', data: <?= json_encode($chart_inside) ?>, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
-        { label: 'Out', data: <?= json_encode($chart_out) ?>, backgroundColor: 'rgba(75, 192, 192, 0.7)' }
+        { label: 'Waiting', data: <?= json_encode($chart_waiting) ?>, backgroundColor: 'orange' },
+        { label: 'Inside', data: <?= json_encode($chart_inside) ?>, backgroundColor: 'green' },
+        { label: 'Out', data: <?= json_encode($chart_out) ?>, backgroundColor: 'red' }
       ]
     };
 
     let chartType = 'bar';
-    let chart = new Chart(ctx, { type: chartType, data: chartData, options: getChartOptions(chartType) });
+    let chart = new Chart(ctx, { type: chartType, data: chartData, options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true } } } });
 
     document.getElementById('chartType').addEventListener('change', function () {
       chartType = this.value;
       chart.destroy();
-      chart = new Chart(ctx, { type: chartType, data: chartData, options: getChartOptions(chartType) });
+      chart = new Chart(ctx, { type: chartType, data: chartData, options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true } } } });
     });
-
-    function getChartOptions(type) {
-      const isPie = (type === 'pie' || type === 'doughnut');
-      return {
-        responsive: true,
-        plugins: { legend: { display: true }, tooltip: { mode: 'index', intersect: false } },
-        scales: isPie ? {} : {
-          x: { stacked: true, title: { display: true, text: 'Date' } },
-          y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Appointments' } }
-        }
-      };
-    }
   });
 </script>
 
-<?php
-echo erp_footer();
-?>
+<?php echo erp_footer(); ?>

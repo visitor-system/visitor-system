@@ -9,8 +9,10 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
     exit;
 }
 
-$duplicateMessage = '';
+$alertMessage = '';
+$alertType = '';
 $editCompany = null;
+$formErrors = [];
 
 // Handle delete
 if (isset($_GET['delete'])) {
@@ -34,55 +36,57 @@ if (isset($_GET['delete'])) {
 
 // Handle add/edit
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['edit_id'])) {
-        // Update company
-        $id = intval($_POST['edit_id']);
-        $name = trim($_POST['edit_name']);
-        $address = trim($_POST['edit_address']);
-        $status = $_POST['edit_status'];
+    $isEdit = isset($_POST['edit_id']);
 
-        $stmt = $conn->prepare("UPDATE companies SET name=?, location=?, status=? WHERE id=?");
-        $stmt->bind_param("sssi", $name, $address, $status, $id);
-        if ($stmt->execute()) {
-            echo "<script>
-            alert('Company information has been updated.');
-            window.location='create_company.php';
-        </script>";
-        } else {
-            echo "<script>
-            alert('Failed to update company.');
-            window.location='create_company.php';
-        </script>";
-        }
-        $stmt->close();
-        exit;
-    } else {
-        // Add new company
-        $name = trim($_POST['name']);
-        $address = trim($_POST['address']);
-        $status = $_POST['status'];
+    $name = trim($_POST[$isEdit ? 'edit_name' : 'name'] ?? '');
+    $address = trim($_POST[$isEdit ? 'edit_address' : 'address'] ?? '');
+    $status = $_POST[$isEdit ? 'edit_status' : 'status'] ?? '';
 
-        // Check for duplicate
-        $stmt = $conn->prepare("SELECT id FROM companies WHERE name=?");
-        $stmt->bind_param("s", $name);
-        $stmt->execute();
-        $stmt->store_result();
-        if ($stmt->num_rows > 0) {
-            $duplicateMessage = "❌ Company <strong>$name</strong> already exists.";
-        } else {
-            $stmtInsert = $conn->prepare("INSERT INTO companies (name, location, status) VALUES (?,?,?)");
-            $stmtInsert->bind_param("sss", $name, $address, $status);
-            if ($stmtInsert->execute()) {
-                echo "<script>
-                alert('Company added successfully.');
-                window.location='create_company.php';
-                </script>";
+    // Validation
+    if ($name === '')
+        $formErrors['name'] = 'Please enter company name.';
+    if ($address === '')
+        $formErrors['address'] = 'Please enter address.';
+    if ($status === '')
+        $formErrors['status'] = 'Please select status.';
+
+    if (empty($formErrors)) {
+        if ($isEdit) {
+            $id = intval($_POST['edit_id']);
+            $stmt = $conn->prepare("UPDATE companies SET name=?, location=?, status=? WHERE id=?");
+            $stmt->bind_param("sssi", $name, $address, $status, $id);
+            if ($stmt->execute()) {
+                $alertMessage = '✅ Company information has been updated.';
+                $alertType = 'success';
             } else {
-                $duplicateMessage = "❌ Failed to create company: " . $conn->error;
+                $alertMessage = '❌ Failed to update company.';
+                $alertType = 'danger';
             }
-            $stmtInsert->close();
+            $stmt->close();
+        } else {
+            // Check duplicate
+            $stmt = $conn->prepare("SELECT id FROM companies WHERE name=?");
+            $stmt->bind_param("s", $name);
+            $stmt->execute();
+            $stmt->store_result();
+            if ($stmt->num_rows > 0) {
+                $formErrors['name'] = "Company <strong>$name</strong> already exists.";
+            } else {
+                $stmtInsert = $conn->prepare("INSERT INTO companies (name, location, status) VALUES (?,?,?)");
+                $stmtInsert->bind_param("sss", $name, $address, $status);
+                if ($stmtInsert->execute()) {
+                    $alertMessage = '✅ Company added successfully.';
+                    $alertType = 'success';
+                } else {
+                    $alertMessage = '❌ Failed to create company: ' . $conn->error;
+                    $alertType = 'danger';
+                }
+                $stmtInsert->close();
+            }
+            $stmt->close();
         }
-        $stmt->close();
+    } else {
+        $alertType = 'danger';
     }
 }
 
@@ -108,61 +112,85 @@ $breadcrumbs = [
 echo erp_header('Company Management', $breadcrumbs);
 ?>
 
-<?php if ($duplicateMessage): ?>
-    <?php echo erp_alert($duplicateMessage, 'danger'); ?>
+<!-- Styles for Gray Form Card -->
+<style>
+    .erp-card.form-card {
+        background-color: #dde0e2ff;
+        border: 1px solid #ccc;
+        color: #333;
+    }
+
+    .erp-card.form-card .form-label {
+        color: #333;
+    }
+</style>
+
+<!-- Alert -->
+<?php if ($alertMessage): ?>
+    <div class="alert alert-<?= $alertType ?> mt-2"><?= $alertMessage ?></div>
 <?php endif; ?>
 
 <!-- Add/Edit Company Form -->
-<div class="erp-card">
+<div class="erp-card form-card mb-4">
     <div class="erp-card-header">
         <h3 class="erp-card-title"><i class="fas fa-building"></i>
             <?= $editCompany ? 'Edit Company' : 'Add New Company' ?></h3>
     </div>
 
-    <form method="POST">
+    <form method="POST" class="p-3">
         <?php if ($editCompany): ?>
             <input type="hidden" name="edit_id" value="<?= $editCompany['id'] ?>">
         <?php endif; ?>
-        <div class="row g-3">
-            <div class="col-md-6">
-                <div class="erp-form-group">
-                    <label class="erp-form-label">Company Name</label>
-                    <input type="text" name="<?= $editCompany ? 'edit_name' : 'name' ?>" class="erp-form-control"
-                        value="<?= htmlspecialchars($editCompany['name'] ?? '') ?>" required>
-                </div>
+
+        <div class="row g-3 align-items-end">
+            <!-- Company Name -->
+            <div class="col-md-3">
+                <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                <input type="text" name="<?= $editCompany ? 'edit_name' : 'name' ?>" class="form-control"
+                    value="<?= htmlspecialchars($editCompany['name'] ?? ($_POST['name'] ?? '')) ?>">
+                <?php if (!empty($formErrors['name'])): ?>
+                    <div class="text-danger small"><?= $formErrors['name'] ?></div>
+                <?php endif; ?>
             </div>
-            <div class="col-md-6">
-                <div class="erp-form-group">
-                    <label class="erp-form-label">Address</label>
-                    <input type="text" name="<?= $editCompany ? 'edit_address' : 'address' ?>" class="erp-form-control"
-                        value="<?= htmlspecialchars($editCompany['location'] ?? '') ?>" required>
-                </div>
+
+            <!-- Address -->
+            <div class="col-md-3">
+                <label class="form-label">Address <span class="text-danger">*</span></label>
+                <input type="text" name="<?= $editCompany ? 'edit_address' : 'address' ?>" class="form-control"
+                    value="<?= htmlspecialchars($editCompany['location'] ?? ($_POST['address'] ?? '')) ?>">
+                <?php if (!empty($formErrors['address'])): ?>
+                    <div class="text-danger small"><?= $formErrors['address'] ?></div>
+                <?php endif; ?>
             </div>
-            <div class="col-md-6">
-                <div class="erp-form-group">
-                    <label class="erp-form-label">Status</label>
-                    <select name="<?= $editCompany ? 'edit_status' : 'status' ?>" class="erp-form-control" required>
-                        <option value="">Select Status</option>
-                        <option value="Active" <?= ($editCompany['status'] ?? '') == 'Active' ? 'selected' : '' ?>>Active
-                        </option>
-                        <option value="Inactive" <?= ($editCompany['status'] ?? '') == 'Inactive' ? 'selected' : '' ?>>
-                            Inactive</option>
-                    </select>
-                </div>
+
+            <!-- Status -->
+            <div class="col-md-3">
+                <label class="form-label">Status <span class="text-danger">*</span></label>
+                <select name="<?= $editCompany ? 'edit_status' : 'status' ?>" class="form-control">
+                    <option value="">Select Status</option>
+                    <option value="Active" <?= ($editCompany['status'] ?? ($_POST['status'] ?? '')) == 'Active' ? 'selected' : '' ?>>Active</option>
+                    <option value="Inactive" <?= ($editCompany['status'] ?? ($_POST['status'] ?? '')) == 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+                </select>
+                <?php if (!empty($formErrors['status'])): ?>
+                    <div class="text-danger small"><?= $formErrors['status'] ?></div>
+                <?php endif; ?>
             </div>
-        </div>
-        <div class="mt-4">
-            <button type="submit"
-                class="erp-btn erp-btn-primary"><?= $editCompany ? 'Update Company' : 'Create Company' ?></button>
-            <?php if ($editCompany): ?>
-                <a href="create_company.php" class="erp-btn erp-btn-secondary">Cancel</a>
-            <?php endif; ?>
+
+            <!-- Submit Button -->
+            <div class="col-md-3 text-start">
+                <button type="submit" class="erp-btn erp-btn-primary w-100">
+                    <?= $editCompany ? 'Update Company' : 'Create Company' ?>
+                </button>
+                <?php if ($editCompany): ?>
+                    <a href="create_company.php" class="erp-btn erp-btn-secondary w-100 mt-2">Cancel</a>
+                <?php endif; ?>
+            </div>
         </div>
     </form>
 </div>
 
 <!-- Companies Table -->
-<div class="erp-card mt-4">
+<div class="erp-card">
     <div class="erp-card-header">
         <h3 class="erp-card-title"><i class="fas fa-building"></i> Company List</h3>
     </div>
@@ -186,18 +214,21 @@ echo erp_header('Company Management', $breadcrumbs);
                             <td><?= htmlspecialchars($row['location']) ?></td>
                             <td><?= erp_badge($row['status'], $row['status'] == 'Active' ? 'success' : 'danger') ?></td>
                             <td>
-                                <a href="?edit=<?= $row['id'] ?>" class="erp-btn erp-btn-warning erp-btn-sm"><i
-                                        class="fas fa-edit"></i> Edit</a>
+                                <a href="?edit=<?= $row['id'] ?>" class="erp-btn erp-btn-warning erp-btn-sm">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
                                 <button class="erp-btn erp-btn-danger erp-btn-sm"
-                                    onclick="deleteConfirm('?delete=<?= $row['id'] ?>','company')"><i class="fas fa-trash"></i>
-                                    Delete</button>
+                                    onclick="deleteConfirm('?delete=<?= $row['id'] ?>','company')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
                             </td>
                         </tr>
                     <?php endwhile; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2"></i><br>No
-                            companies found</td>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-2x mb-2"></i><br>No companies found
+                        </td>
                     </tr>
                 <?php endif; ?>
             </tbody>
