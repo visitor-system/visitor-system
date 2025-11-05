@@ -783,7 +783,11 @@ function erp_header($title, $breadcrumbs = [])
                     --erp-gray-900: #ffffff;
                 }
             }
+            .form-select {
+                line-height:1.8;
+            }
         </style>
+
     </head>
 
     <body>

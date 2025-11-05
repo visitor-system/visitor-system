@@ -98,7 +98,6 @@ while ($row = $chart_result->fetch_assoc()) {
   $chart_out[] = intval($row['out_count']);
 }
 
-
 $breadcrumbs = [];
 echo erp_header('Dashboard', $breadcrumbs);
 ?>
@@ -113,7 +112,7 @@ echo erp_header('Dashboard', $breadcrumbs);
   .erp-stat-card {
     flex: 1;
     padding: 10px 12px;
-    font-size: 14px;
+    font-size: 14px; /* Main text size */
     line-height: 1.2;
     cursor: pointer;
     text-align: center;
@@ -127,13 +126,13 @@ echo erp_header('Dashboard', $breadcrumbs);
   }
 
   .erp-stat-card .stat-value {
-    font-size: 20px;
+    font-size: 24px; /* Larger font for the count value */
     font-weight: bold;
     margin-bottom: 4px;
   }
 
   .erp-stat-card .stat-label {
-    font-size: 12px;
+    font-size: 16px; /* Adjust this size for the label */
     color: #555;
   }
 

@@ -60,19 +60,22 @@ if (!empty($_GET['search'])) {
 
 // Host filter
 $host_filter = $_GET['host'] ?? 'all';
-if (isset($_SESSION['user'])) {
-    $currentUserId = $_SESSION['user']['id'];
-    $currentUserRole = $_SESSION['user']['role'] ?? 'host';
-    if ($currentUserRole == 'host') {
-        $where .= " AND a.host_id = $currentUserId";
-    } elseif (!empty($host_filter) && $host_filter != 'all') {
-        $hostId = (int) $host_filter;
+$currentUserId = $_SESSION['user']['id'];
+$currentUserRole = $_SESSION['user']['role'] ?? 'host';
+
+if ($currentUserRole == 'host') {
+    // Host sees only their own appointments
+    $where .= " AND a.host_id = $currentUserId";
+} else {
+    // Admin or other roles can filter by host
+    if (!empty($host_filter) && $host_filter != 'all') {
+        $hostId = (int)$host_filter;
         $where .= " AND a.host_id = $hostId";
     }
 }
 
 // Fetch data using LEFT JOIN
-$query = "SELECT a.*, p.pass_number, p.checkin_time, p.checkout_time, p.status, u.username AS host_name
+$query = "SELECT a.*, p.pass_number, p.checkin_time, p.checkout_time, p.status, u.username AS host_username
 FROM appointments a
 LEFT JOIN passes p ON p.appointment_id = a.id
 LEFT JOIN users u ON a.host_id = u.id
@@ -97,7 +100,7 @@ $breadcrumbs = [
     ['title' => 'Reports', 'icon' => 'chart-bar']
 ];
 
-echo erp_header(' Reports', $breadcrumbs);
+echo erp_header('Reports', $breadcrumbs);
 ?>
 
 <div class="erp-card mb-1">
@@ -108,12 +111,12 @@ echo erp_header(' Reports', $breadcrumbs);
         <form method="GET" class="row g-1 mb-1 align-items-end">
             <div class="col-md-2">
                 <label class="form-label">From Date & Time</label>
-                <input type="datetime-local" id="from" name="from" class="form-control"
+                <input type="datetime-local" id="from" name="from" class="form-control custom-datetime"
                     value="<?= htmlspecialchars($from) ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">To Date & Time</label>
-                <input type="datetime-local" id="to" name="to" class="form-control"
+                <input type="datetime-local" id="to" name="to" class="form-control custom-datetime"
                     value="<?= htmlspecialchars($to) ?>">
             </div>
 
@@ -223,11 +226,10 @@ echo erp_header(' Reports', $breadcrumbs);
                                 <td><?= htmlspecialchars($row['visitor_name'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars($row['mobile'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars($row['company'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars(substr($row['purpose'] ?? '—', 0, 50)) ?><?= strlen($row['purpose'] ?? '') > 50 ? '...' : '' ?>
-                                </td>
+                                <td><?= htmlspecialchars(substr($row['purpose'] ?? '—', 0, 50)) ?><?= strlen($row['purpose'] ?? '') > 50 ? '...' : '' ?></td>
                                 <td><?= htmlspecialchars($row['whom_to_meet'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars($row['num_of_people'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars($row['host_name'] ?? '—') ?></td>
+                                <td><?= htmlspecialchars($row['host_username'] ?? '—') ?></td>
                                 <td><?= $appointment ?></td>
                                 <td><?= $checkin ?></td>
                                 <td><?= $checkout ?></td>
@@ -293,6 +295,13 @@ echo erp_header(' Reports', $breadcrumbs);
     table th,
     table td {
         white-space: nowrap;
+    }
+
+    /* Custom styling for datetime-local input */
+    .custom-datetime {
+        width: 100% !important; /* Expand to full width */
+        height: 45px; /* Increase height */
+        font-size: 16px; /* Increase font size */
     }
 </style>
 

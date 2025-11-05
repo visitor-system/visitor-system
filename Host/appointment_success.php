@@ -2,6 +2,10 @@
 session_start();
 require_once '../includes/db.php';
 require_once '../includes/erp_layout.php';
+require_once '../vendor/autoload.php'; // PHPMailer autoloader
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 
 if (!isset($_SESSION['user'])) {
     header("Location: ../pages/login.html");
@@ -69,6 +73,60 @@ if ($appointment) {
     }
 }
 
+// -----------------------
+// Email Sending Logic
+// -----------------------
+// $email_sent = false;
+// if ($appointment) {
+//     $mail = new PHPMailer(true);
+//     try {
+//         //Server settings
+//         $mail->isSMTP();
+//         $mail->Host = 'smtp.yourmailserver.com'; // Change this to your organization's SMTP server
+//         $mail->SMTPAuth = true;
+//         $mail->Username = 'your_email@yourdomain.com'; // Your email address
+//         $mail->Password = 'your_email_password'; // Your email password or app password
+//         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+//         $mail->Port = 587;
+
+//         //Recipients
+//         $mail->setFrom('your_email@yourdomain.com', 'Your Organization');
+//         $mail->addAddress($appointment['visitor_email'], $appointment['visitor_name']); // Recipient email
+
+//         // Content
+//         $mail->isHTML(true);
+//         $mail->Subject = 'Appointment Confirmation';
+//         $mail->Body = "
+//             <h3>Hello {$appointment['visitor_name']},</h3>
+//             <p>Your appointment has been successfully booked.</p>
+//             <p><strong>Appointment Details:</strong></p>
+//             <ul>
+//                 <li><strong>Pass No:</strong> {$appointment['pass_number']}</li>
+//                 <li><strong>Visitor Name:</strong> {$appointment['visitor_name']}</li>
+//                 <li><strong>Mobile:</strong> {$appointment['mobile']}</li>
+//                 <li><strong>Company:</strong> {$appointment['company']}</li>
+//                 <li><strong>Purpose:</strong> {$appointment['purpose']}</li>
+//                 <li><strong>Appointment Date & Time:</strong> {$appointment_time}</li>
+//             </ul>
+//             <p>Please reach on time. We look forward to seeing you!</p>
+//             <p>Best regards,<br>Your Organization</p>
+//         ";
+//         $mail->AltBody = "Hello {$appointment['visitor_name']}, your appointment details are as follows:\n"
+//             . "Pass No: {$appointment['pass_number']}\n"
+//             . "Visitor Name: {$appointment['visitor_name']}\n"
+//             . "Mobile: {$appointment['mobile']}\n"
+//             . "Company: {$appointment['company']}\n"
+//             . "Purpose: {$appointment['purpose']}\n"
+//             . "Date & Time: {$appointment_time}\n\n"
+//             . "Please reach on time. We look forward to seeing you!\n\nBest regards, Your Organization";
+
+//         $mail->send();
+//         $email_sent = true;
+//     } catch (Exception $e) {
+//         error_log("Email could not be sent. Mailer Error: {$mail->ErrorInfo}");
+//     }
+// }
+
 // Breadcrumbs
 $breadcrumbs = [
     ['title' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'tachometer-alt'],
@@ -89,7 +147,6 @@ echo erp_header('Appointment Success', $breadcrumbs);
         </div>
         <h2 class="text-success mb-3">Appointment Booked Successfully!</h2>
 
-
         <?php if ($appointment): ?>
             <div class="row justify-content-center">
                 <div class="col-md-8">
@@ -104,37 +161,42 @@ echo erp_header('Appointment Success', $breadcrumbs);
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <strong>Visitor Name:</strong><br>
-                                    <span class="text-primary"><?= htmlspecialchars($appointment['visitor_name']) ?></span>
+                                    <span id="visitor_name" class="text-primary"><?= htmlspecialchars($appointment['visitor_name']) ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Mobile:</strong><br>
-                                    <span class="text-primary"><?= htmlspecialchars($appointment['mobile']) ?></span>
+                                    <span id="Mobile" class="text-primary"><?= htmlspecialchars($appointment['mobile']) ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Company:</strong><br>
-                                    <span class="text-primary"><?= htmlspecialchars($appointment['company']) ?></span>
+                                    <span id="company"class="text-primary"><?= htmlspecialchars($appointment['company']) ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Whom to Meet:</strong><br>
-                                    <span class="text-primary"><?= htmlspecialchars($appointment['whom_to_meet']) ?></span>
+                                    <span id="whom_to_meet" class="text-primary"><?= htmlspecialchars($appointment['whom_to_meet']) ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Host Name:</strong><br>
-                                    <span
+                                    <span id="Host_name"
                                         class="text-success"><?= htmlspecialchars($_SESSION['user']['name'] ?? 'Host') ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Purpose:</strong><br>
-                                    <span class="text-primary"><?= htmlspecialchars($appointment['purpose']) ?></span>
+                                    <span id="Purpose"class="text-primary"><?= htmlspecialchars($appointment['purpose']) ?></span>
                                 </div>
+
                                 <div class="col-md-6">
-                                    <strong>Appointment Date & Time:</strong><br>
-                                    <span
+                                    <strong>Appointment Date_Time:</strong><br>
+                                    <span id="Appointment_Date_Time:"
                                         class="text-primary"><?= date('d M Y, h:i A', strtotime($appointment['appointment_time'])) ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Number of People:</strong><br>
-                                    <span class="text-primary"><?= $appointment['num_of_people'] ?></span>
+                                    <span id="Number_of_people"class="text-primary"><?= $appointment['num_of_people'] ?></span>
+                                </div>
+                                 <div class="col-md-6">
+                                    <strong>Email</strong><br>
+                                    <span id="Email"class="text-primary"><?= htmlspecialchars($appointment['Email']) ?></span>
                                 </div>
                                 <?php if ($appointment['pass_number']): ?>
                                     <div class="col-md-6">
@@ -142,7 +204,7 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                         <div id="passQR"
                                             style="padding: 5px; display: flex; justify-content: center; align-items: center;">
                                         </div>
-                                        <span
+                                        <span id="Pass_Number"
                                             class="text-success fw-bold"><?= htmlspecialchars($appointment['pass_number']) ?></span>
                                     </div>
                                     <div class="col-md-6">
@@ -159,12 +221,65 @@ echo erp_header('Appointment Success', $breadcrumbs);
 
         <div class="mt-4">
             <?php echo erp_link_button('Book Another Appointment', 'book_appointment.php', 'primary', '', 'fas fa-calendar-plus'); ?>
-            <?php echo erp_link_button('View All Appointments', 'book_appointment.php', 'secondary', '', 'fas fa-list'); ?>
+            <?php echo erp_link_button('View All Appointments', 'book_appointment.php', 'primary', '', 'fas fa-list'); ?>
+          <button  id= 'email_button' class='erp-btn erp-btn-primary' onclick="SendEmail()"><i class='fas fa-calendar-plus'></i>Send Email</button>
             <?php echo erp_link_button('Back to Dashboard', 'dashboard.php', 'info', '', 'fas fa-tachometer-alt'); ?>
+           
         </div>
     </div>
 </div>
 
+<script>
+    function SendEmail() {
+        document.getElementById('email_button').disabled = true;
+  // Get values from inputs using IDs
+  const name =document.getElementById("visitor_name").textContent.trim();
+  const email =document.getElementById("Email").textContent.trim();
+  const Mobile =document.getElementById("Mobile").textContent.trim();
+  const company =document.getElementById("company").textContent.trim();
+  const whom_to_meet =document.getElementById("whom_to_meet").textContent.trim();
+  const Host_name = document.getElementById("Host_name").textContent.trim();
+  const Purpose = document.getElementById("Purpose").textContent.trim();
+  const Appointment_Date_Time=document.getElementById("Appointment_Date_Time:").textContent.trim();
+  const Number_of_People = document.getElementById("Number_of_people").textContent.trim();
+  const Pass_Number = document.getElementById("Pass_Number").textContent.trim();
+
+  // Basic validation
+  if (!name) {
+    alert("Please fill all fields before sending!");
+    return;
+  }
+
+  // Prepare data
+  const formData = new FormData();
+  formData.append("name", name);
+  formData.append("email", email);
+  formData.append("Mobile", Mobile);
+  formData.append("company", company);
+  formData.append("whom_to_meet",whom_to_meet );
+  formData.append("Host_name", Host_name);
+  formData.append("Purpose", Purpose);
+  formData.append("Appointment_Date_Time", Appointment_Date_Time);
+  formData.append("Number_of_People", Number_of_People);
+  formData.append("Pass_Number",Pass_Number);
+
+  // Send to PHP using Fetch
+  fetch("appointment_Email.php", {
+    method: "POST",
+    body: formData
+  })
+    .then(response => response.text())
+    .then(data => {
+      alert(data); // Show the message returned by PHP
+      document.getElementById('email_button').disabled = true;
+    })
+    .catch(error => {
+        document.getElementById('email_button').disabled = false;
+      console.error("Error:", error);
+      alert("Something went wrong while sending email.");
+    });
+}
+</script>
 
 <!-- QR Code Script -->
 <script>
@@ -173,8 +288,7 @@ echo erp_header('Appointment Success', $breadcrumbs);
 
     <?php if ($appointment): ?>
         // Prepare full appointment info for QR code
-        var qrText = `
-    Visitor Name: <?= htmlspecialchars($appointment['visitor_name']) ?>
+        var qrText = `Visitor Name: <?= htmlspecialchars($appointment['visitor_name']) ?>
     Mobile: <?= htmlspecialchars($appointment['mobile']) ?>
     Company: <?= htmlspecialchars($appointment['company']) ?>
     Whom to Meet: <?= htmlspecialchars($appointment['whom_to_meet']) ?>
@@ -183,8 +297,7 @@ echo erp_header('Appointment Success', $breadcrumbs);
     Appointment Date & Time: <?= date('d M Y, h:i A', strtotime($appointment['appointment_time'])) ?>
     Number of People: <?= $appointment['num_of_people'] ?>
     Pass Number: <?= htmlspecialchars($appointment['pass_number']) ?>
-    Status: Waiting
-            `;
+    Status: Waiting`;
 
         new QRCode(qrContainer, {
             text: qrText,
@@ -192,9 +305,6 @@ echo erp_header('Appointment Success', $breadcrumbs);
             height: 150
         });
     <?php endif; ?>
-
-
 </script>
-
 
 <?php echo erp_footer(); ?>

@@ -5,6 +5,13 @@ require_once '../phpqrcode/qrlib.php';
 require_once '../includes/erp_layout.php';
 date_default_timezone_set('Asia/Kolkata');
 
+require '../vendor/autoload.php';  // Path to the Composer autoload file
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+$mail = new PHPMailer(true);
+
 if (!isset($_SESSION['user'])) {
     header("Location: ../pages/login.php");
     exit;
@@ -128,26 +135,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     $purpose = trim($_POST['purpose'] ?? '');
     $num_of_people = intval($_POST['num_of_people'] ?? 0);
     $appointment_time = $_POST['appointment_time'] ?? '';
+    $Email = trim($_POST['email'] ?? '');  // Added email field
     $edit_id = intval($_POST['edit_id'] ?? 0);
 
-    if ($visitor_name === '')
-        $errors['visitor_name'] = 'Please enter visitor name.';
-    if ($mobile === '')
-        $errors['mobile'] = 'Please enter mobile number.';
-    elseif (!preg_match('/^[0-9]{10}$/', $mobile))
-        $errors['mobile'] = 'Mobile must be 10 digits.';
-    if ($company === '')
-        $errors['company'] = 'Enter company name.';
-    if ($whom_to_meet === '')
-        $errors['whom_to_meet'] = 'Enter whom to meet.';
-    if ($purpose === '')
-        $errors['purpose'] = 'Enter purpose.';
-    if ($num_of_people <= 0)
-        $errors['num_of_people'] = 'Enter number of people.';
-    if ($appointment_time === '')
-        $errors['appointment_time'] = 'Select appointment time.';
-    elseif (strtotime($appointment_time) < time())
-        $errors['appointment_time'] = 'Cannot be in past.';
+    // Validation
+    if ($visitor_name === '') $errors['visitor_name'] = 'Please enter visitor name.';
+    if ($mobile === '') $errors['mobile'] = 'Please enter mobile number.';
+    elseif (!preg_match('/^[0-9]{10}$/', $mobile)) $errors['mobile'] = 'Mobile must be 10 digits.';
+    if ($company === '') $errors['company'] = 'Enter company name.';
+    if ($whom_to_meet === '') $errors['whom_to_meet'] = 'Enter whom to meet.';
+    if ($purpose === '') $errors['purpose'] = 'Enter purpose.';
+    if ($num_of_people <= 0) $errors['num_of_people'] = 'Enter number of people.';
+    if ($appointment_time === '') $errors['appointment_time'] = 'Select appointment time.';
+    elseif (strtotime($appointment_time) < time()) $errors['appointment_time'] = 'Cannot be in past.';
+    if ($Email === '') $errors['email'] = 'Please enter email address.';
+    elseif (!filter_var($Email, FILTER_VALIDATE_EMAIL)) $errors['Email'] = 'Invalid email address.';
 
     if (!empty($errors)) {
         echo json_encode(['status' => 'error', 'errors' => $errors]);
@@ -157,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     $userid = $_SESSION['user']['id'];
 
     if ($edit_id > 0) {
+        // Update appointment
         $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
         $stmt->bind_param("sssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
         $stmt->execute();
@@ -164,26 +167,62 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
         echo json_encode(['status' => 'success', 'message' => 'Appointment updated successfully!']);
         exit;
     } else {
-        $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,purpose,num_of_people,appointment_time,status,host_id) VALUES (?,?,?,?,?,?,?,'pending',?)");
-        $stmt->bind_param("sssssisi", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $userid);
+        $status='pending';
+        // Insert new appointment
+        $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,purpose,num_of_people,appointment_time,status,host_id,Email) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("ssssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time,  $status,$userid, $Email);
         $stmt->execute();
         $appointment_id = $conn->insert_id;
         $stmt->close();
 
+        // Generate Pass Number
         $pass_number = 'VP' . str_pad($appointment_id, 5, '0', STR_PAD_LEFT);
         $qrDir = '../assets/qrcodes/';
-        if (!is_dir($qrDir))
-            mkdir($qrDir, 0777, true);
+        if (!is_dir($qrDir)) mkdir($qrDir, 0777, true);
         $qrPath = $qrDir . $pass_number . '.png';
-        if (function_exists('imagecreate'))
-            QRcode::png('Visitor Pass ID: ' . $pass_number, $qrPath, QR_ECLEVEL_L, 4);
+        if (function_exists('imagecreate')) QRcode::png('Visitor Pass ID: ' . $pass_number, $qrPath, QR_ECLEVEL_L, 4);
+
+        // Store Pass Details
         $stmt2 = $conn->prepare("INSERT INTO passes (appointment_id, pass_number, qr_code, status) VALUES (?,?,?,'waiting')");
         $stmt2->bind_param("iss", $appointment_id, $pass_number, $qrPath);
         $stmt2->execute();
         $stmt2->close();
 
-        echo json_encode(['status' => 'success', 'message' => 'Appointment booked successfully!']);
-        exit;
+        // Send confirmation email (optional)
+       // mail($Email, "Appointment Confirmation", "Your appointment has been booked. Pass Number: $pass_number. QR Code: $qrPath");
+
+// try {
+//     // Server settings
+//     $mail->isSMTP(); // Set mailer to use SMTP
+//     $mail->Host       = 'smtp.pdvspl.in'; // Set Gmail's SMTP server
+//     $mail->SMTPAuth   = true; // Enable SMTP authentication
+//     $mail->Username   = 'prajakta@pdvspl.in'; // Your Gmail email address
+//     $mail->Password   = 'Prajakta0102@123'; // Use your Gmail App Password (not your Gmail password)
+//     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // Enable TLS encryption
+//     $mail->Port       = 587; // Use port 587 (or 465 for SSL)
+
+//     // Recipients
+//     $mail->setFrom('prajakta@pdvspl.in', 'host'); // Sender's email and name
+//     $mail->addAddress($Email, $visitor_name); // Recipient's email and name
+//     // $mail->addReplyTo('your_email@gmail.com', 'Mailer'); // Optionally, add a reply-to address
+
+//     // Content
+//     $mail->isHTML(true); // Set email format to HTML
+//     $mail->Subject = 'Test Email from PHPMailer via Gmail SMTP'; // Email subject
+//     $mail->Body    = 'This is a test email sent via PHPMailer using Gmail SMTP!'; // Email body
+//     $mail->AltBody = 'This is the plain text version of the email content.'; // Plain text body (for non-HTML clients)
+
+//     // Send the email
+//     if ($mail->send()) {
+         echo json_encode(['status' => 'success', 'message' => 'Appointment booked successfully!']);
+         exit;
+//     }
+// } catch (Exception $e) {
+//     echo "Message could not be sent. Mailer Error: {$mail->ErrorInfo}";
+// }
+
+
+       
     }
 }
 
@@ -194,6 +233,7 @@ $breadcrumbs = [
 echo erp_header('Book Appointment', $breadcrumbs);
 ?>
 
+<!-- Appointment Form -->
 <div id="alert-container"></div>
 
 <div class="erp-card mb-4 appointment-card">
@@ -205,7 +245,6 @@ echo erp_header('Book Appointment', $breadcrumbs);
             <input type="hidden" name="save_appointment" value="1">
             <input type="hidden" name="edit_id" id="edit_id" value="">
             <div class="row g-2">
-
                 <div class="col-md-3">
                     <label>Mobile <span class="text-danger">*</span></label>
                     <input type="text" id="mobile" name="mobile" class="form-control form-sm" maxlength="10">
@@ -233,17 +272,18 @@ echo erp_header('Book Appointment', $breadcrumbs);
                 </div>
                 <div class="col-md-3">
                     <label>No. of People <span class="text-danger">*</span></label>
-                    <input type="number" id="num_of_people" name="num_of_people" class="form-control form-sm" min="1"
-                        value="1">
+                    <input type="number" id="num_of_people" name="num_of_people" class="form-control form-sm" min="1" value="1">
                     <div class="text-danger small" id="num_of_people_error"></div>
                 </div>
                 <div class="col-md-3">
                     <label>Appointment Date & Time <span class="text-danger">*</span></label>
-                    <input id="appointment_time" type="datetime-local" name="appointment_time"
-                        class="form-control form-sm"
-                        value="<?= htmlspecialchars($_POST['appointment_time'] ?? date('Y-m-d\TH:i')) ?>"
-                        min="<?= date('Y-m-d\TH:i') ?>">
+                    <input id="appointment_time" type="datetime-local" name="appointment_time" class="form-control form-sm" value="<?= htmlspecialchars($_POST['appointment_time'] ?? date('Y-m-d\TH:i')) ?>" min="<?= date('Y-m-d\TH:i') ?>">
                     <div class="text-danger small" id="appointment_time_error"></div>
+                </div>
+                <div class="col-md-3">
+                    <label>Email <span class="text-danger">*</span></label>
+                    <input type="email" id="email" name="email" class="form-control form-sm">
+                    <div class="text-danger small" id="email_error"></div>
                 </div>
             </div>
             <div class="mt-3 text-end">
@@ -253,6 +293,7 @@ echo erp_header('Book Appointment', $breadcrumbs);
     </div>
 </div>
 
+<!-- Appointment List -->
 <div class="erp-card mt-4 appointment-list-card">
     <div class="erp-card-header">
         <h5 class="erp-card-title"><i class="fas fa-list me-2"></i>Your Appointments</h5>
@@ -265,13 +306,11 @@ echo erp_header('Book Appointment', $breadcrumbs);
         background: #dfe0e0ff;
         border-radius: 8px;
     }
-
     .compact-form .form-control {
         padding: 4px 8px;
         font-size: 13px;
         height: 30px;
     }
-
     .compact-form textarea.form-control {
         height: 30px;
         resize: none;
@@ -280,16 +319,13 @@ echo erp_header('Book Appointment', $breadcrumbs);
         padding: 4px 8px;
         font-size: 13px;
     }
-
     .compact-form label {
         font-size: 13px;
         margin-bottom: 3px;
     }
-
     .compact-form .row.g-2 {
         row-gap: 0.5rem !important;
     }
-
     .appointment-list-card {
         background: #fdfdfdff;
         border: 1px solid #eee;
@@ -327,7 +363,7 @@ echo erp_header('Book Appointment', $breadcrumbs);
         e.preventDefault();
         let fd = new FormData(this);
         fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(data => {
-            ['visitor_name', 'mobile', 'company', 'whom_to_meet', 'purpose', 'num_of_people', 'appointment_time'].forEach(f => document.getElementById(f + '_error').innerText = '');
+            ['visitor_name', 'mobile', 'company', 'whom_to_meet', 'purpose', 'num_of_people', 'appointment_time', 'email'].forEach(f => document.getElementById(f + '_error').innerText = '');
             document.getElementById('alert-container').innerHTML = '';
             if (data.status === 'error') {
                 for (let f in data.errors) document.getElementById(f + '_error').innerText = data.errors[f];
