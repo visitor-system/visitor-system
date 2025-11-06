@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     elseif (!preg_match('/^[0-9]{10}$/', $mobile)) $errors['mobile'] = 'Mobile must be 10 digits.';
     if ($company === '') $errors['company'] = 'Enter company name.';
     if ($whom_to_meet === '') $errors['whom_to_meet'] = 'Enter whom to meet.';
-    if ($Department === '') $errors['Department'] = 'Enter Department.';
+     if ($Department === '') $errors['Department'] = 'Enter Department.';
     if ($purpose === '') $errors['purpose'] = 'Enter purpose.';
     if ($num_of_people <= 0) $errors['num_of_people'] = 'Enter number of people.';
     if ($appointment_time === '') $errors['appointment_time'] = 'Select appointment time.';
@@ -162,16 +162,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     $userid = $_SESSION['user']['id'];
 
     if ($edit_id > 0) {
-        $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, Department=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
-        $stmt->bind_param("ssssssissi", $visitor_name, $mobile, $company, $whom_to_meet, $Department, $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
+        // Update appointment
+        $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?,Department=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
+        $stmt->bind_param("ssssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $Department , $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
         $stmt->execute();
         $stmt->close();
         echo json_encode(['status' => 'success', 'message' => 'Appointment updated successfully!']);
         exit;
     } else {
-        $status = 'pending';
+        $status='pending';
+        // Insert new appointment
         $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,Department,purpose,num_of_people,appointment_time,status,host_id,Email) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param("ssssssissis", $visitor_name, $mobile, $company, $whom_to_meet, $Department, $purpose, $num_of_people, $appointment_time, $status, $userid, $Email);
+        $stmt->bind_param("sssssssssss", $visitor_name, $mobile, $company, $whom_to_meet,$Department, $purpose, $num_of_people, $appointment_time,  $status,$userid, $Email);
         $stmt->execute();
         $appointment_id = $conn->insert_id;
         $stmt->close();
@@ -255,6 +257,11 @@ echo erp_header('Book Appointment', $breadcrumbs);
                     <label>Email <span class="text-danger">*</span></label>
                     <input type="email" id="email" name="email" class="form-control form-sm">
                     <div class="text-danger small" id="email_error"></div>
+                </div>
+               <div class="col-md-3">
+                    <label>Department <span class="text-danger">*</span></label>
+                    <input type="Department" id="Department" name="Department" class="form-control form-sm">
+                    <div class="text-danger small" id="Department_error"></div>
                 </div>
             </div>
             <div class="mt-3 text-end">

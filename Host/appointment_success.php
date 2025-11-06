@@ -203,6 +203,11 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                  <span id="Department" class="text-primary"><?= htmlspecialchars($appointment['department']) ?></span>
                                 
                                 </div>
+                                 <div class="col-md-6">
+                                 <strong>Department</strong><br>
+                                 <span id="Department" class="text-primary"><?= htmlspecialchars($appointment['Department']) ?></span>
+                                
+                                </div>
 
                                 <?php if ($appointment['pass_number']): ?>
                                     <div class="col-md-6">
