@@ -178,7 +178,7 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                 <div class="col-md-6">
                                     <strong>Host Name:</strong><br>
                                     <span id="Host_name"
-                                        class="text-success"><?= htmlspecialchars($_SESSION['user']['name'] ?? 'Host') ?></span>
+                                        class="text-primary"><?= htmlspecialchars($_SESSION['user']['email'] ?? 'Host') ?></span>
                                 </div>
                                 <div class="col-md-6">
                                     <strong>Purpose:</strong><br>
@@ -196,8 +196,14 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                 </div>
                                  <div class="col-md-6">
                                     <strong>Email</strong><br>
-                                    <span id="Email"class="text-primary"><?= htmlspecialchars($appointment['Email']) ?></span>
+                                    <span id="Email"class="text-primary"><?= htmlspecialchars($appointment['email']) ?></span>
                                 </div>
+                                 <div class="col-md-6">
+                                 <strong>Department</strong><br>
+                                 <span id="Department" class="text-primary"><?= htmlspecialchars($appointment['department']) ?></span>
+                                
+                                </div>
+
                                 <?php if ($appointment['pass_number']): ?>
                                     <div class="col-md-6">
                                         <strong>Pass Number:</strong><br>
@@ -240,9 +246,12 @@ echo erp_header('Appointment Success', $breadcrumbs);
   const whom_to_meet =document.getElementById("whom_to_meet").textContent.trim();
   const Host_name = document.getElementById("Host_name").textContent.trim();
   const Purpose = document.getElementById("Purpose").textContent.trim();
+  
   const Appointment_Date_Time=document.getElementById("Appointment_Date_Time:").textContent.trim();
   const Number_of_People = document.getElementById("Number_of_people").textContent.trim();
   const Pass_Number = document.getElementById("Pass_Number").textContent.trim();
+ 
+
 
   // Basic validation
   if (!name) {

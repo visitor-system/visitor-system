@@ -805,7 +805,7 @@ function erp_header($title, $breadcrumbs = [])
             <div class="erp-navbar-actions">
                 <div class="erp-user-menu">
                     <div class="erp-user-avatar" onclick="toggleUserMenu()">
-                        <?php echo strtoupper(substr($_SESSION['user']['name'] ?? 'U', 0, 1)); ?>
+                        <?php echo strtoupper(substr($_SESSION['user']['email'] ?? 'U', 0, 1)); ?>
                     </div>
                 </div>
             </div>

@@ -37,7 +37,8 @@ if (isset($_GET['ajax'])) {
         $totalPages = ceil($total / $limit);
         $stmt->close();
 
-        $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time 
+        // ✅ Department added in SELECT query
+        $stmt = $conn->prepare("SELECT id, visitor_name, mobile, company, whom_to_meet, Department, purpose, num_of_people, DATE_FORMAT(appointment_time,'%d-%m-%Y %H:%i') as appointment_time 
             FROM appointments WHERE host_id=? AND deleted=0 ORDER BY id DESC LIMIT ? OFFSET ?");
         $stmt->bind_param("iii", $user_id, $limit, $offset);
         $stmt->execute();
@@ -54,6 +55,7 @@ if (isset($_GET['ajax'])) {
                     <th>Visitor Name</th>
                     <th>Mobile</th>
                     <th>Company</th>
+                    <th>Department</th> <!-- ✅ Added new column -->
                     <th>Whom to Meet</th>
                     <th>Purpose</th>
                     <th>No. of People</th>
@@ -68,6 +70,7 @@ if (isset($_GET['ajax'])) {
                         <td><?= htmlspecialchars($a['visitor_name']) ?></td>
                         <td><?= htmlspecialchars($a['mobile']) ?></td>
                         <td><?= htmlspecialchars($a['company']) ?></td>
+                        <td><?= htmlspecialchars($a['Department']) ?></td> <!-- ✅ Added -->
                         <td><?= htmlspecialchars($a['whom_to_meet']) ?></td>
                         <td><?= htmlspecialchars($a['purpose']) ?></td>
                         <td><?= htmlspecialchars($a['num_of_people']) ?></td>
@@ -78,7 +81,6 @@ if (isset($_GET['ajax'])) {
                         </td>
                     </tr>
                 <?php endforeach; ?>
-
             </tbody>
         </table>
         <nav>
@@ -131,25 +133,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     $visitor_name = trim($_POST['visitor_name'] ?? '');
     $mobile = trim($_POST['mobile'] ?? '');
     $company = trim($_POST['company'] ?? '');
+    $Department = trim($_POST['Department'] ?? '');
     $whom_to_meet = trim($_POST['whom_to_meet'] ?? '');
     $purpose = trim($_POST['purpose'] ?? '');
     $num_of_people = intval($_POST['num_of_people'] ?? 0);
     $appointment_time = $_POST['appointment_time'] ?? '';
-    $Email = trim($_POST['email'] ?? '');  // Added email field
+    $Email = trim($_POST['email'] ?? '');
     $edit_id = intval($_POST['edit_id'] ?? 0);
 
-    // Validation
     if ($visitor_name === '') $errors['visitor_name'] = 'Please enter visitor name.';
     if ($mobile === '') $errors['mobile'] = 'Please enter mobile number.';
     elseif (!preg_match('/^[0-9]{10}$/', $mobile)) $errors['mobile'] = 'Mobile must be 10 digits.';
     if ($company === '') $errors['company'] = 'Enter company name.';
     if ($whom_to_meet === '') $errors['whom_to_meet'] = 'Enter whom to meet.';
+    if ($Department === '') $errors['Department'] = 'Enter Department.';
     if ($purpose === '') $errors['purpose'] = 'Enter purpose.';
     if ($num_of_people <= 0) $errors['num_of_people'] = 'Enter number of people.';
     if ($appointment_time === '') $errors['appointment_time'] = 'Select appointment time.';
     elseif (strtotime($appointment_time) < time()) $errors['appointment_time'] = 'Cannot be in past.';
     if ($Email === '') $errors['email'] = 'Please enter email address.';
-    elseif (!filter_var($Email, FILTER_VALIDATE_EMAIL)) $errors['Email'] = 'Invalid email address.';
+    elseif (!filter_var($Email, FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Invalid email address.';
 
     if (!empty($errors)) {
         echo json_encode(['status' => 'error', 'errors' => $errors]);
@@ -159,70 +162,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_appointment'])) {
     $userid = $_SESSION['user']['id'];
 
     if ($edit_id > 0) {
-        // Update appointment
-        $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
-        $stmt->bind_param("sssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
+        $stmt = $conn->prepare("UPDATE appointments SET visitor_name=?, mobile=?, company=?, whom_to_meet=?, Department=?, purpose=?, num_of_people=?, appointment_time=? WHERE id=? AND host_id=?");
+        $stmt->bind_param("ssssssissi", $visitor_name, $mobile, $company, $whom_to_meet, $Department, $purpose, $num_of_people, $appointment_time, $edit_id, $userid);
         $stmt->execute();
         $stmt->close();
         echo json_encode(['status' => 'success', 'message' => 'Appointment updated successfully!']);
         exit;
     } else {
-        $status='pending';
-        // Insert new appointment
-        $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,purpose,num_of_people,appointment_time,status,host_id,Email) VALUES (?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param("ssssssssss", $visitor_name, $mobile, $company, $whom_to_meet, $purpose, $num_of_people, $appointment_time,  $status,$userid, $Email);
+        $status = 'pending';
+        $stmt = $conn->prepare("INSERT INTO appointments (visitor_name,mobile,company,whom_to_meet,Department,purpose,num_of_people,appointment_time,status,host_id,Email) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("ssssssissis", $visitor_name, $mobile, $company, $whom_to_meet, $Department, $purpose, $num_of_people, $appointment_time, $status, $userid, $Email);
         $stmt->execute();
         $appointment_id = $conn->insert_id;
         $stmt->close();
 
-        // Generate Pass Number
         $pass_number = 'VP' . str_pad($appointment_id, 5, '0', STR_PAD_LEFT);
         $qrDir = '../assets/qrcodes/';
         if (!is_dir($qrDir)) mkdir($qrDir, 0777, true);
         $qrPath = $qrDir . $pass_number . '.png';
         if (function_exists('imagecreate')) QRcode::png('Visitor Pass ID: ' . $pass_number, $qrPath, QR_ECLEVEL_L, 4);
 
-        // Store Pass Details
         $stmt2 = $conn->prepare("INSERT INTO passes (appointment_id, pass_number, qr_code, status) VALUES (?,?,?,'waiting')");
         $stmt2->bind_param("iss", $appointment_id, $pass_number, $qrPath);
         $stmt2->execute();
         $stmt2->close();
 
-        // Send confirmation email (optional)
-       // mail($Email, "Appointment Confirmation", "Your appointment has been booked. Pass Number: $pass_number. QR Code: $qrPath");
-
-// try {
-//     // Server settings
-//     $mail->isSMTP(); // Set mailer to use SMTP
-//     $mail->Host       = 'smtp.pdvspl.in'; // Set Gmail's SMTP server
-//     $mail->SMTPAuth   = true; // Enable SMTP authentication
-//     $mail->Username   = 'prajakta@pdvspl.in'; // Your Gmail email address
-//     $mail->Password   = 'Prajakta0102@123'; // Use your Gmail App Password (not your Gmail password)
-//     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // Enable TLS encryption
-//     $mail->Port       = 587; // Use port 587 (or 465 for SSL)
-
-//     // Recipients
-//     $mail->setFrom('prajakta@pdvspl.in', 'host'); // Sender's email and name
-//     $mail->addAddress($Email, $visitor_name); // Recipient's email and name
-//     // $mail->addReplyTo('your_email@gmail.com', 'Mailer'); // Optionally, add a reply-to address
-
-//     // Content
-//     $mail->isHTML(true); // Set email format to HTML
-//     $mail->Subject = 'Test Email from PHPMailer via Gmail SMTP'; // Email subject
-//     $mail->Body    = 'This is a test email sent via PHPMailer using Gmail SMTP!'; // Email body
-//     $mail->AltBody = 'This is the plain text version of the email content.'; // Plain text body (for non-HTML clients)
-
-//     // Send the email
-//     if ($mail->send()) {
-         echo json_encode(['status' => 'success', 'message' => 'Appointment booked successfully!']);
-         exit;
-//     }
-// } catch (Exception $e) {
-//     echo "Message could not be sent. Mailer Error: {$mail->ErrorInfo}";
-// }
-
-
-       
+        echo json_encode(['status' => 'success', 'message' => 'Appointment booked successfully!']);
+        exit;
     }
 }
 
@@ -265,7 +231,12 @@ echo erp_header('Book Appointment', $breadcrumbs);
                     <input type="text" id="whom_to_meet" name="whom_to_meet" class="form-control form-sm">
                     <div class="text-danger small" id="whom_to_meet_error"></div>
                 </div>
-                <div class="col-3">
+                <div class="col-md-3">
+                    <label>Department <span class="text-danger">*</span></label>
+                    <input type="text" id="Department" name="Department" class="form-control form-sm">
+                    <div class="text-danger small" id="Department_error"></div>
+                </div>
+                <div class="col-md-3">
                     <label>Purpose <span class="text-danger">*</span></label>
                     <textarea id="purpose" name="purpose" class="form-control form-sm" rows="2"></textarea>
                     <div class="text-danger small" id="purpose_error"></div>
@@ -363,12 +334,11 @@ echo erp_header('Book Appointment', $breadcrumbs);
         e.preventDefault();
         let fd = new FormData(this);
         fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(data => {
-            ['visitor_name', 'mobile', 'company', 'whom_to_meet', 'purpose', 'num_of_people', 'appointment_time', 'email'].forEach(f => document.getElementById(f + '_error').innerText = '');
+            ['visitor_name', 'mobile', 'company', 'whom_to_meet', 'purpose', 'num_of_people', 'appointment_time', 'email', 'Department'].forEach(f => document.getElementById(f + '_error').innerText = '');
             document.getElementById('alert-container').innerHTML = '';
             if (data.status === 'error') {
                 for (let f in data.errors) document.getElementById(f + '_error').innerText = data.errors[f];
             } else {
-                // ✅ Redirect to success page
                 window.location.href = 'appointment_success.php';
             }
         });
@@ -380,6 +350,7 @@ echo erp_header('Book Appointment', $breadcrumbs);
             document.getElementById('mobile').value = data.mobile;
             document.getElementById('company').value = data.company;
             document.getElementById('whom_to_meet').value = data.whom_to_meet;
+            document.getElementById('Department').value = data.Department;
             document.getElementById('purpose').value = data.purpose;
             document.getElementById('num_of_people').value = data.num_of_people;
             document.getElementById('appointment_time').value = data.appointment_time;
