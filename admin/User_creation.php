@@ -136,7 +136,7 @@ echo erp_header('User Management', $breadcrumbs);
 ?>
 
 <!-- Add/Edit User Form -->
-<div class="erp-card mb-3" style="background-color: #dde0e2ff; border-radius: 8px;"> <!-- Form background color -->
+<div class="erp-card mb-3" style="background-color: #dde0e2ff; border-radius: 8px;">
     <div class="erp-card-header">
         <h3 class="erp-card-title">
             <i class="fas fa-user-plus"></i>
@@ -144,16 +144,16 @@ echo erp_header('User Management', $breadcrumbs);
         </h3>
     </div>
 
-    <form method="POST" class="p-3">
+    <form method="POST" class="p-3" autocomplete="off">
         <?php if ($editUser): ?>
             <input type="hidden" name="edit_id" value="<?= $editUser['id'] ?>">
         <?php endif; ?>
 
         <div class="row g-3 align-items-end">
             <!-- Full Name -->
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label class="form-label">Full Name <span class="text-danger">*</span></label>
-                <input type="text" name="<?= $editUser ? 'edit_username' : 'username' ?>" class="form-control"
+                <input autocomplete="off" type="text" name="<?= $editUser ? 'edit_username' : 'username' ?>" class="form-control"
                        value="<?= htmlspecialchars($editUser['username'] ?? ($_POST['username'] ?? '')) ?>">
                 <?php if (!empty($formErrors['username'])): ?>
                     <div class="text-danger small"><?= $formErrors['username'] ?></div>
@@ -161,31 +161,34 @@ echo erp_header('User Management', $breadcrumbs);
             </div>
 
             <!-- Email -->
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label class="form-label">Email <span class="text-danger">*</span></label>
-                <input type="email" name="<?= $editUser ? 'edit_email' : 'email' ?>" class="form-control"
+                <input autocomplete="new-password" type="email" name="<?= $editUser ? 'edit_email' : 'email' ?>" class="form-control"
                        value="<?= htmlspecialchars($editUser['email'] ?? ($_POST['email'] ?? '')) ?>">
                 <?php if (!empty($formErrors['email'])): ?>
                     <div class="text-danger small"><?= $formErrors['email'] ?></div>
                 <?php endif; ?>
             </div>
 
-            <!-- Contact -->
+            <!-- Password -->
             <div class="col-md-3">
-                <label class="form-label">Contact <span class="text-danger">*</span></label>
-                <input type="text" maxlength="10" name="<?= $editUser ? 'edit_contact' : 'contact' ?>" class="form-control"
-                       value="<?= htmlspecialchars($editUser['contact'] ?? ($_POST['contact'] ?? '')) ?>">
-                <?php if (!empty($formErrors['contact'])): ?>
-                    <div class="text-danger small"><?= $formErrors['contact'] ?></div>
+                <label class="form-label"><?= $editUser ? 'Password (leave blank to keep existing)' : 'Password' ?> <?= !$editUser ? '<span class="text-danger">*</span>' : '' ?></label>
+                <div class="input-group">
+                    <input autocomplete="new-password" type="password" id="passwordField" name="<?= $editUser ? 'edit_password' : 'password' ?>" class="form-control" placeholder="<?= $editUser ? '********' : '' ?>">
+                    <button type="button" class="btn btn-outline-secondary" onclick="togglePassword()"><i class="fas fa-eye" id="toggleIcon"></i></button>
+                </div>
+                <?php if (!empty($formErrors['password'])): ?>
+                    <div class="text-danger small"><?= $formErrors['password'] ?></div>
                 <?php endif; ?>
             </div>
 
-            <!-- Password -->
+            <!-- Contact -->
             <div class="col-md-3">
-                <label class="form-label"><?= $editUser ? 'New Password (optional)' : 'Password' ?> <?= !$editUser ? '<span class="text-danger">*</span>' : '' ?></label>
-                <input type="password" name="<?= $editUser ? 'edit_password' : 'password' ?>" class="form-control">
-                <?php if (!empty($formErrors['password'])): ?>
-                    <div class="text-danger small"><?= $formErrors['password'] ?></div>
+                <label class="form-label">Contact <span class="text-danger">*</span></label>
+                <input autocomplete="off" type="text" maxlength="10" name="<?= $editUser ? 'edit_contact' : 'contact' ?>" class="form-control"
+                       value="<?= htmlspecialchars($editUser['contact'] ?? ($_POST['contact'] ?? '')) ?>">
+                <?php if (!empty($formErrors['contact'])): ?>
+                    <div class="text-danger small"><?= $formErrors['contact'] ?></div>
                 <?php endif; ?>
             </div>
 
@@ -234,7 +237,7 @@ echo erp_header('User Management', $breadcrumbs);
                 <?php endif; ?>
             </div>
 
-            <!-- Submit Button beside Department -->
+            <!-- Submit Button -->
             <div class="col-md-3 text-start">
                 <button type="submit" class="erp-btn erp-btn-primary w-100">
                     <?= $editUser ? 'Update User' : 'Add User' ?>
@@ -295,5 +298,22 @@ echo erp_header('User Management', $breadcrumbs);
         </table>
     </div>
 </div>
+
+<!-- Show/Hide Password Script -->
+<script>
+function togglePassword() {
+    const passwordField = document.getElementById('passwordField');
+    const toggleIcon = document.getElementById('toggleIcon');
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleIcon.classList.remove('fa-eye');
+        toggleIcon.classList.add('fa-eye-slash');
+    } else {
+        passwordField.type = 'password';
+        toggleIcon.classList.remove('fa-eye-slash');
+        toggleIcon.classList.add('fa-eye');
+    }
+}
+</script>
 
 <?php echo erp_footer(); ?>

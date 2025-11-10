@@ -348,7 +348,7 @@ function erp_header($title, $breadcrumbs = [])
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                margin-bottom: 1.5rem;
+                margin-bottom: 1rem;
                 padding-bottom: 1rem;
                 border-bottom: 1px solid var(--erp-gray-200);
             }
@@ -786,9 +786,47 @@ function erp_header($title, $breadcrumbs = [])
             .form-select {
                 line-height:1.8;
             }
-        </style>
-
-    </head>
+            /* Notification SMS style */
+.notification-item {
+    background: #f1f1f1;
+    border-radius: 12px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.2;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+}
+.notification-item:hover {
+    background: #e2e6ea;
+}
+.notification-item.in {
+    border-left: 4px solid #10b981; /* green for check-in */
+}
+.notification-item.out {
+    border-left: 4px solid #ef4444; /* red for check-out */
+}
+.notification-item strong {
+    display: block;
+}
+.notification-item span {
+    display: block;
+    font-size: 0.8rem;
+    color: #555;
+}
+.notification-details {
+    display: none;
+    font-size: 0.8rem;
+    color: #333;
+    margin-top: 0.25rem;
+}
+.notification-item.expanded .notification-details {
+    display: block;
+}
+ </style>
+ </head>
 
     <body>
         <!-- ERP Navigation -->
@@ -802,7 +840,19 @@ function erp_header($title, $breadcrumbs = [])
                 <span class="d-none d-md-inline">Visitor System</span>
             </a>
 
-            <div class="erp-navbar-actions">
+           <?php if ($_SESSION['user']['role'] === 'host'): ?>
+    <div class="dropdown">
+        <a href="notifications.php" class="btn btn-light position-relative me-3" style="border-radius:50;">
+    <i class="fa fa-bell"></i>
+    <span id="notificationCount" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"></span>
+    </a>
+
+        <ul id="notificationDropdown" class="dropdown-menu dropdown-menu-end p-2" 
+         aria-labelledby="notificationBell" style="width: 300px; max-height: 400px; overflow-y: auto; overflow-x: hidden;">
+       </ul>
+       </div>
+       <?php endif; ?>
+    <div class="erp-navbar-actions">
                 <div class="erp-user-menu">
                     <div class="erp-user-avatar" onclick="toggleUserMenu()">
                         <?php echo strtoupper(substr($_SESSION['user']['email'] ?? 'U', 0, 1)); ?>
@@ -865,7 +915,7 @@ function erp_header($title, $breadcrumbs = [])
                                 <span class="erp-nav-text">Reports</span>
                             </a>
                         </div>
-                    <?php elseif ($_SESSION['user']['role'] === 'security'): ?>
+                        <?php elseif ($_SESSION['user']['role'] === 'security'): ?>
                         <div class="erp-nav-item">
                             <a href="dashboard.php"
                                 class="erp-nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
@@ -887,7 +937,7 @@ function erp_header($title, $breadcrumbs = [])
                                 <span class="erp-nav-text">Reports</span>
                             </a>
                         </div>
-                    <?php elseif ($_SESSION['user']['role'] === 'host'): ?>
+                           <?php elseif ($_SESSION['user']['role'] === 'host'): ?>
                         <div class="erp-nav-item">
                             <a href="dashboard.php"
                                 class="erp-nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
@@ -954,7 +1004,7 @@ function erp_footer()
 {
     ob_start();
     ?>
-            </div>
+        </div>
         </main>
 
         <!-- Bootstrap JS -->
@@ -1139,7 +1189,53 @@ function erp_footer()
                     }
                 });
             };
-        </script>
+            function fetchNotifications() {
+    fetch('../includes/fetch_notifications.php')
+        .then(res => res.json())
+        .then(data => {
+            const dropdown = document.getElementById('notificationDropdown');
+            dropdown.innerHTML = '';
+
+            if (data.length === 0) {
+                dropdown.innerHTML = '<li class="text-center text-muted">No notifications</li>';
+                return;
+            }
+
+            data.forEach(notif => {
+                const li = document.createElement('li');
+                li.className = 'notification-item ' + (notif.status === 'in' ? 'in' : 'out');
+                li.innerHTML = `
+                    <strong>${notif.visitor_name}</strong>
+                    <span>${notif.purpose} - ${notif.appointment_time}</span>
+                    <div class="notification-details">
+                        
+                        Mobile: ${notif.mobile}<br>
+                        Company: ${notif.company}<br>
+                        
+                        
+                        
+                    </div>
+                `;
+
+                li.addEventListener('click', () => {
+                    li.classList.toggle('expanded');
+                });
+
+                dropdown.appendChild(li);
+            });
+
+            // Update badge count
+            const count = document.getElementById('notificationCount');
+            count.textContent = data.length;
+        })
+        .catch(err => console.error(err));
+}
+
+// Initial fetch & auto refresh every 10 seconds
+fetchNotifications();
+setInterval(fetchNotifications, 10000);
+
+     </script>
     </body>
 
     </html>

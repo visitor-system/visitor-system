@@ -203,11 +203,10 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                  <span id="Department" class="text-primary"><?= htmlspecialchars($appointment['department']) ?></span>
                                 
                                 </div>
-                                 <div class="col-md-6">
-                                 <strong>Department</strong><br>
-                                 <span id="Department" class="text-primary"><?= htmlspecialchars($appointment['Department']) ?></span>
-                                
-                                </div>
+                                    <div class="col-md-6">
+                                        <strong>Status:</strong><br>
+                                        <?php echo erp_badge('Waiting', 'warning'); ?>
+                                    </div>
 
                                 <?php if ($appointment['pass_number']): ?>
                                     <div class="col-md-6">
@@ -217,11 +216,7 @@ echo erp_header('Appointment Success', $breadcrumbs);
                                         </div>
                                         <span id="Pass_Number"
                                             class="text-success fw-bold"><?= htmlspecialchars($appointment['pass_number']) ?></span>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <strong>Status:</strong><br>
-                                        <?php echo erp_badge('Waiting', 'warning'); ?>
-                                    </div>
+                                    
                                 <?php endif; ?>
                             </div>
                         </div>

@@ -3,7 +3,7 @@ session_start();
 require '../includes/db.php';
 
 // Filename
-$filename = "visitor_pass_report_" . date("Y-m-d_H-i") . ".excel";
+$filename = "visitor_pass_report_" . date("Y-m-d_H-i") . ".xls";
 
 // Headers for Excel
 header("Content-Type: application/vnd.ms-excel");

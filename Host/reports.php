@@ -110,6 +110,8 @@ $where
 ORDER BY a.id DESC
 LIMIT $limit OFFSET $offset";
 
+// echo $query;
+// exit();
 $result = $conn->query($query);
 if (!$result) {
     die("Query Error: " . $conn->error);

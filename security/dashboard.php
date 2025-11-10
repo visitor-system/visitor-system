@@ -21,8 +21,7 @@ $to_input = $_GET['to'] ?? date('Y-m-d') . 'T18:00';
 
 function convertToSQLDateTime($dt)
 {
-  if (!$dt)
-    return null;
+  if (!$dt) return null;
   return date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $dt)));
 }
 
@@ -112,7 +111,7 @@ echo erp_header('Dashboard', $breadcrumbs);
   .erp-stat-card {
     flex: 1;
     padding: 10px 12px;
-    font-size: 14px; /* Main text size */
+    font-size: 14px;
     line-height: 1.2;
     cursor: pointer;
     text-align: center;
@@ -126,13 +125,13 @@ echo erp_header('Dashboard', $breadcrumbs);
   }
 
   .erp-stat-card .stat-value {
-    font-size: 24px; /* Larger font for the count value */
+    font-size: 24px;
     font-weight: bold;
     margin-bottom: 4px;
   }
 
   .erp-stat-card .stat-label {
-    font-size: 16px; /* Adjust this size for the label */
+    font-size: 16px;
     color: #555;
   }
 
@@ -169,6 +168,20 @@ echo erp_header('Dashboard', $breadcrumbs);
 
   .popup-table th {
     background: #f1f1f1;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .booked-table tr:hover {
+    background-color: #f9f9f9;
+  }
+
+  .table-container {
+    overflow-x: auto;
+    max-height: 400px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
   }
 </style>
 
@@ -220,13 +233,63 @@ echo erp_header('Dashboard', $breadcrumbs);
   <canvas id="appointmentTrendsChart"></canvas>
 </div>
 
+<!-- ✅ Pending Visits List -->
+<div class="mt-4">
+  <h5 style="font-size:16px; margin-bottom:8px;">Pending Visits List</h5>
+  <div class="table-container">
+    <table class="popup-table booked-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Visitor Name</th>
+          <th>Company</th>
+          <th>Mobile</th>
+          <th>Host</th>
+          <th>Appointment Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php
+        $pending_result = $conn->query("
+          SELECT appointments.id, appointments.visitor_name, appointments.company, appointments.mobile,
+                 users.name AS host_name, appointments.appointment_time, passes.status
+          FROM passes
+          JOIN appointments ON passes.appointment_id = appointments.id
+          LEFT JOIN users ON appointments.host_id = users.id
+          WHERE passes.status = 'waiting'
+            AND appointments.appointment_time BETWEEN '$from_sql' AND '$to_sql'
+            $host_only_clause
+          ORDER BY appointments.appointment_time DESC
+        ");
+
+        if ($pending_result->num_rows > 0) {
+          while ($row = $pending_result->fetch_assoc()) {
+            echo "<tr>
+                    <td>{$row['id']}</td>
+                    <td>{$row['visitor_name']}</td>
+                    <td>{$row['company']}</td>
+                    <td>{$row['mobile']}</td>
+                    <td>{$row['host_name']}</td>
+                    <td>{$row['appointment_time']}</td>
+                    <td style='text-transform:capitalize;color:orange;font-weight:bold;'>{$row['status']}</td>
+                  </tr>";
+          }
+        } else {
+          echo "<tr><td colspan='7'>No pending visits found.</td></tr>";
+        }
+        ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
   const records = <?= json_encode($all_records) ?>;
 
   document.addEventListener("DOMContentLoaded", function () {
-    // Auto-close datetime pickers
     ['from', 'to'].forEach(id => { document.getElementById(id).addEventListener('input', e => e.target.blur()); });
 
     // Card click popup

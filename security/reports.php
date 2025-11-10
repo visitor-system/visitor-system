@@ -17,8 +17,19 @@ if ($hostsResult) {
     }
 }
 
+// Fetch all departments for the dropdown safely
+$departments = [];
+if ($conn->query("SHOW TABLES LIKE 'Departments'")->num_rows > 0) {
+    $departmentsResult = $conn->query("SELECT id, name FROM Departments ORDER BY name ASC");
+    if ($departmentsResult) {
+        while ($d = $departmentsResult->fetch_assoc()) {
+            $departments[] = $d;
+        }
+    }
+}
+
 // Filters
-$where = "WHERE 1=1";
+$where = "WHERE a.deleted = 0"; // Only show non-deleted appointments
 $page = $_GET['page'] ?? 1;
 $limit = $_GET['limit'] ?? 25;
 $offset = ($page - 1) * $limit;
@@ -47,6 +58,7 @@ if (!empty($status_filter) && $status_filter != 'all') {
     $where .= " AND (p.status = '$status' OR p.status IS NULL)";
 }
 
+
 // Search filter
 if (!empty($_GET['search'])) {
     $search = $conn->real_escape_string($_GET['search']);
@@ -54,41 +66,64 @@ if (!empty($_GET['search'])) {
         a.visitor_name LIKE '%$search%' OR 
         a.mobile LIKE '%$search%' OR 
         a.company LIKE '%$search%' OR 
+        a.email LIKE '%$search%' OR
         p.pass_number LIKE '%$search%'
     )";
 }
 
 // Host filter
 $host_filter = $_GET['host'] ?? 'all';
-if (isset($_SESSION['user'])) {
-    $currentUserId = $_SESSION['user']['id'];
-    $currentUserRole = $_SESSION['user']['role'] ?? 'host';
-    if ($currentUserRole == 'host') {
-        $where .= " AND a.host_id = $currentUserId";
-    } elseif (!empty($host_filter) && $host_filter != 'all') {
-        $hostId = (int) $host_filter;
+$currentUserId = $_SESSION['user']['id'];
+$currentUserRole = $_SESSION['user']['role'] ?? 'host';
+
+if ($currentUserRole == 'host') {
+    $where .= " AND a.host_id = $currentUserId";
+} else {
+    if (!empty($host_filter) && $host_filter != 'all') {
+        $hostId = (int)$host_filter;
         $where .= " AND a.host_id = $hostId";
     }
 }
 
+// Department filter safely
+$department_filter = $_GET['department'] ?? 'all';
+$department_join = "";
+if (!empty($department_filter) && $department_filter != 'all') {
+    $deptId = (int)$department_filter;
+    $where .= " AND a.department_id = $deptId";
+}
+
+// Check if departments table exists for join
+$departments_exists = $conn->query("SHOW TABLES LIKE 'departments'")->num_rows > 0;
+if ($departments_exists) {
+    $department_join = "LEFT JOIN departments d ON a.department_id = d.id";
+}
+
 // Fetch data using LEFT JOIN
-$query = "SELECT a.*, p.pass_number, p.checkin_time, p.checkout_time, p.status, u.username AS host_name
+$query = "SELECT a.*, p.pass_number, p.checkin_time, p.checkout_time, p.status, u.username AS host_username,
+          a.email, d.name AS department_name
 FROM appointments a
 LEFT JOIN passes p ON p.appointment_id = a.id
 LEFT JOIN users u ON a.host_id = u.id
+$department_join
 $where
 ORDER BY a.id DESC
 LIMIT $limit OFFSET $offset";
+//echo $query;exit();
 
 $result = $conn->query($query);
+if (!$result) {
+    die("Query Error: " . $conn->error);
+}
 
 // Pagination
 $totalQuery = "SELECT COUNT(*) as total FROM appointments a
 LEFT JOIN passes p ON p.appointment_id = a.id
 LEFT JOIN users u ON a.host_id = u.id
+$department_join
 $where";
 $totalResult = $conn->query($totalQuery);
-$totalRows = $totalResult->fetch_assoc()['total'];
+$totalRows = $totalResult ? $totalResult->fetch_assoc()['total'] : 0;
 $totalPages = ceil($totalRows / $limit);
 
 // Breadcrumbs
@@ -97,7 +132,7 @@ $breadcrumbs = [
     ['title' => 'Reports', 'icon' => 'chart-bar']
 ];
 
-echo erp_header(' Reports', $breadcrumbs);
+echo erp_header('Reports', $breadcrumbs);
 ?>
 
 <div class="erp-card mb-1">
@@ -108,29 +143,36 @@ echo erp_header(' Reports', $breadcrumbs);
         <form method="GET" class="row g-1 mb-1 align-items-end">
             <div class="col-md-2">
                 <label class="form-label">From Date & Time</label>
-                <input type="datetime-local" id="from" name="from" class="form-control"
+                <input type="datetime-local" id="from" name="from" class="form-control custom-datetime"
                     value="<?= htmlspecialchars($from) ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label">To Date & Time</label>
-                <input type="datetime-local" id="to" name="to" class="form-control"
+                <input type="datetime-local" id="to" name="to" class="form-control custom-datetime"
                     value="<?= htmlspecialchars($to) ?>">
             </div>
-
-            <?php if ($currentUserRole != 'host'): ?>
-                <div class="col-md-2">
-                    <label class="form-label">Host</label>
-                    <select name="host" class="form-select">
-                        <option value="all" <?= $host_filter == 'all' ? 'selected' : '' ?>>All Hosts</option>
-                        <?php foreach ($hosts as $host): ?>
-                            <option value="<?= $host['id'] ?>" <?= $host_filter == $host['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($host['username']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            <?php endif; ?>
-
+            <div class="col-md-2">
+                <label class="form-label">Host</label>
+                <select name="host" class="form-select">
+                    <option value="all" <?= $host_filter == 'all' ? 'selected' : '' ?>>All Hosts</option>
+                    <?php foreach ($hosts as $host): ?>
+                        <option value="<?= $host['id'] ?>" <?= $host_filter == $host['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($host['username']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Department</label>
+                <select name="department" class="form-select">
+                    <option value="all" <?= $department_filter == 'all' ? 'selected' : '' ?>>All Departments</option>
+                    <?php foreach ($departments as $dept): ?>
+                        <option value="<?= $dept['id'] ?>" <?= $department_filter == $dept['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($dept['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div class="col-md-2">
                 <label class="form-label">Status</label>
                 <select name="status" class="form-select">
@@ -145,7 +187,6 @@ echo erp_header(' Reports', $breadcrumbs);
                 <input type="text" name="search" class="form-control" placeholder="Search..."
                     value="<?= htmlspecialchars($_GET['search'] ?? '') ?>">
             </div>
-
             <div class="col-md-3 d-flex align-items-end justify-content-between">
                 <?= erp_button('Search Filter', 'primary', 'btn-sm w-75', '', 'type="submit"'); ?>
                 <div class="dropdown ms-4 w-35">
@@ -183,17 +224,21 @@ echo erp_header(' Reports', $breadcrumbs);
     <div class="erp-card-body">
         <?php if ($result && $result->num_rows > 0): ?>
             <div id="printReport" class="table-responsive fixed-header-table" style="max-height:500px; overflow:auto;">
-                <table class="table table-bordered table-striped align-middle text-center" style="min-width:1300px;">
+                <table class="table table-bordered table-striped align-middle text-center" style="min-width:1450px;">
                     <thead class="table-light" style="position: sticky; top: 0; z-index: 10;">
                         <tr>
                             <th>Pass No</th>
                             <th>Visitor</th>
+                            <th>Email</th>
                             <th>Mobile</th>
                             <th>Company</th>
                             <th>Purpose</th>
                             <th>Whom to Meet</th>
                             <th>No. of People</th>
                             <th>Host</th>
+                            <?php if ($departments_exists): ?>
+                            <th>Department</th>
+                            <?php endif; ?>
                             <th style="width:150px;">Appointment Time</th>
                             <th style="width:150px;">Check-in</th>
                             <th style="width:150px;">Check-out</th>
@@ -202,100 +247,56 @@ echo erp_header(' Reports', $breadcrumbs);
                         </tr>
                     </thead>
                     <tbody>
-                        <?php while ($row = $result->fetch_assoc()):
-                            $checkin = $row['checkin_time'] ? date("d M Y, H:i", strtotime($row['checkin_time'])) : '—';
-                            $checkout = $row['checkout_time'] ? date("d M Y, H:i", strtotime($row['checkout_time'])) : '—';
-                            $appointment = $row['appointment_time'] ? date("d M Y, H:i", strtotime($row['appointment_time'])) : '—';
-                            $passNumber = $row['pass_number'] ?? '—';
-                            $noOfPeople = !empty($row['num_of_people']) ? $row['num_of_people'] : '—';
-
-                            if ($row['checkin_time'] && $row['checkout_time']) {
-                                $diff = strtotime($row['checkout_time']) - strtotime($row['checkin_time']);
-                                $hours = floor($diff / 3600);
-                                $minutes = floor(($diff % 3600) / 60);
-                                $timeSpent = ($hours > 0 ? $hours . " hr " : "") . ($minutes > 0 ? $minutes . " mins" : "0 mins");
-                            } else {
-                                $timeSpent = '—';
-                            }
-
-                            $statusLabel = ($row['checkout_time']) ? 'Completed' : ($row['status'] ?? '—');
-                            ?>
+                        <?php while ($row = $result->fetch_assoc()): ?>
                             <tr>
-                                <td><strong><?= htmlspecialchars($passNumber) ?></strong></td>
-                                <td><?= htmlspecialchars($row['visitor_name'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars($row['mobile'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars($row['company'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars(substr($row['purpose'] ?? '—', 0, 50)) ?><?= strlen($row['purpose'] ?? '') > 50 ? '...' : '' ?>
+                                <td><?= htmlspecialchars($row['pass_number'] ?? '-') ?></td>
+                                <td><?= htmlspecialchars($row['visitor_name']) ?></td>
+                                <td><?= htmlspecialchars($row['email']) ?></td>
+                                <td><?= htmlspecialchars($row['mobile']) ?></td>
+                                <td><?= htmlspecialchars($row['company']) ?></td>
+                                <td><?= htmlspecialchars($row['purpose']) ?></td>
+                                <td><?= htmlspecialchars($row['whom_to_meet']) ?></td>
+                                <td><?= htmlspecialchars($row['num_of_people']) ?></td>
+                                <td><?= htmlspecialchars($row['host_username']) ?></td>
+                                <?php if ($departments_exists): ?>
+                                <td><?= htmlspecialchars($row['department']) ?></td>
+                                <?php endif; ?>
+                                <td><?= $row['appointment_time'] ?></td>
+                                <td><?= $row['checkin_time'] ?: '-' ?></td>
+                                <td><?= $row['checkout_time'] ?: '-' ?></td>
+                                <td>
+                                    <?php
+                                    if ($row['checkin_time'] && $row['checkout_time']) {
+                                        $diff = strtotime($row['checkout_time']) - strtotime($row['checkin_time']);
+                                        echo gmdate('H:i:s', $diff);
+                                    } else {
+                                        echo '-';
+                                    }
+                                    ?>
                                 </td>
-                                <td><?= htmlspecialchars($row['whom_to_meet'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars($row['num_of_people'] ?? '—') ?></td>
-                                <td><?= htmlspecialchars($row['host_name'] ?? '—') ?></td>
-                                <td><?= $appointment ?></td>
-                                <td><?= $checkin ?></td>
-                                <td><?= $checkout ?></td>
-                                <td><?= $timeSpent ?></td>
-                                <td><?= $statusLabel ?></td>
+                                <td><?= ucfirst($row['status'] ?? 'waiting') ?></td>
                             </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
             </div>
-
-            <!-- Pagination -->
-            <nav aria-label="Page navigation" class="mt-3">
-                <ul class="pagination justify-content-center">
-                    <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <li class="page-item <?= $i == $page ? 'active' : '' ?>">
-                            <a class="page-link"
-                                href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
-                        </li>
-                    <?php endfor; ?>
-                </ul>
-            </nav>
+            <div class="mt-2 text-end">
+                <span class="small">Showing <?= $offset + 1 ?> - <?= min($offset + $limit, $totalRows) ?> of <?= $totalRows ?> entries</span>
+            </div>
         <?php else: ?>
-            <div class="alert alert-warning">No records found.</div>
+            <div class="text-center text-muted">No records found.</div>
         <?php endif; ?>
     </div>
 </div>
 
 <script>
-    function printTableOnly() {
-        let divToPrint = document.querySelector('#printReport').innerHTML;
-        let newWin = window.open('', 'Print-Window');
-        newWin.document.open();
-        newWin.document.write('<html><head></head><body onload="window.print()">' + divToPrint + '</body></html>');
-        newWin.document.close();
-    }
+function printTableOnly() {
+    const printContents = document.getElementById('printReport').innerHTML;
+    const originalContents = document.body.innerHTML;
+    document.body.innerHTML = printContents;
+    window.print();
+    document.body.innerHTML = originalContents;
+}
 </script>
-
-<style>
-    button.export-btn.btn {
-        background-color: rgba(247, 244, 244, 1) !important;
-        color: #221f1fff !important;
-        border: 1px solid #252322ff !important;
-        font-weight: 600 !important;
-        transition: background-color 0.3s ease;
-    }
-
-    button.export-btn.btn:hover,
-    button.export-btn.btn:focus {
-        background-color: gray !important;
-        color: #ffffff !important;
-    }
-
-    /* Sticky table header */
-    .fixed-header-table thead th {
-        position: sticky;
-        top: 0;
-        background-color: #f8f9fa;
-        z-index: 10;
-    }
-
-    /* Uniform width for datetime fields */
-    table th,
-    table td {
-        white-space: nowrap;
-    }
-</style>
 
 <?php echo erp_footer(); ?>

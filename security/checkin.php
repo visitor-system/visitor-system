@@ -16,19 +16,6 @@ $pass_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $success_message = '';
 $error_message = '';
 
-// Handle check-in POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkin'])) {
-    $current_time = date('Y-m-d H:i:s');
-    $update_query = "UPDATE passes SET status='inside', checkin_time=? WHERE id=?";
-    $stmt = $conn->prepare($update_query);
-    $stmt->bind_param("si", $current_time, $pass_id);
-    if ($stmt->execute()) {
-        $success_message = "Visitor checked in successfully!";
-    } else {
-        $error_message = "Check-in failed: " . $conn->error;
-    }
-}
-
 // Fetch visitor pass & appointment
 $query = "SELECT p.*, a.visitor_name, a.company, a.purpose, a.appointment_time, a.mobile, a.whom_to_meet, u.username as host_name
           FROM passes p
@@ -44,6 +31,42 @@ $pass_data = $result->fetch_assoc();
 if (!$pass_data) {
     echo "<script>window.close();</script>";
     exit;
+}
+
+// Handle check-in POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkin'])) {
+    $current_time = date('Y-m-d H:i:s');
+    
+    // Update check-in in passes table
+    $update_query = "UPDATE passes SET status='inside', checkin_time=? WHERE id=?";
+    $stmt2 = $conn->prepare($update_query);
+    $stmt2->bind_param("si", $current_time, $pass_id);
+    
+    if ($stmt2->execute()) {
+        $success_message = "Visitor checked in successfully!";
+
+        // --- INSERT NOTIFICATION ---
+        $visitor_name = $pass_data['visitor_name'];  // Always get visitor name from DB
+        $mobile = $pass_data['mobile'];
+        $purpose = $pass_data['purpose'];
+        $message = $visitor_name . " checked in";   // ✅ fixed array issue
+
+        $status = 'unread';
+        $current_time = date('Y-m-d H:i:s');
+
+        $insert_sql = "INSERT INTO notifications (visitor_name, mobile, purpose, message, status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt3 = $conn->prepare($insert_sql);
+        if(!$stmt3){
+            die("Notification Prepare failed: " . $conn->error);
+        }
+        $stmt3->bind_param("ssssss", $visitor_name, $mobile, $purpose, $message, $status, $current_time);
+        $stmt3->execute();
+        $stmt3->close();
+        // -------------------------
+    } else {
+        $error_message = "Check-in failed: " . $conn->error;
+    }
 }
 
 // Breadcrumbs
@@ -64,7 +87,6 @@ function formatDateTime($dt)
 <?php if ($success_message): ?>
     <?= erp_alert($success_message, 'success') ?>
     <script>
-        // Apply same auto-back as checkout: 2 seconds
         setTimeout(() => {
             window.location.href = 'track_visitors.php';
         }, 2000);
@@ -83,22 +105,14 @@ function formatDateTime($dt)
             <div class="col-md-6">
                 <h5 class="text-primary mb-3">Visitor Information</h5>
                 <div class="row g-3">
-                    <div class="col-6"><strong>Pass Number:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['pass_number']) ?></span></div>
-                    <div class="col-6"><strong>Visitor Name:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['visitor_name']) ?></span></div>
-                    <div class="col-6"><strong>Company:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['company']) ?></span></div>
-                    <div class="col-6"><strong>Mobile:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['mobile']) ?></span></div>
-                    <div class="col-12"><strong>Purpose:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['purpose']) ?></span></div>
-                    <div class="col-6"><strong>Whom to Meet:</strong><br><span
-                            class="text-primary"><?= htmlspecialchars($pass_data['whom_to_meet']) ?></span></div>
-                    <div class="col-6"><strong>Host Name:</strong><br><span
-                            class="text-success"><?= htmlspecialchars($pass_data['host_name']) ?></span></div>
-                    <div class="col-12"><strong>Appointment Time:</strong><br><span
-                            class="text-primary"><?= formatDateTime($pass_data['appointment_time']) ?></span></div>
+                    <div class="col-6"><strong>Pass Number:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['pass_number']) ?></span></div>
+                    <div class="col-6"><strong>Visitor Name:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['visitor_name']) ?></span></div>
+                    <div class="col-6"><strong>Company:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['company']) ?></span></div>
+                    <div class="col-6"><strong>Mobile:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['mobile']) ?></span></div>
+                    <div class="col-12"><strong>Purpose:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['purpose']) ?></span></div>
+                    <div class="col-6"><strong>Whom to Meet:</strong><br><span class="text-primary"><?= htmlspecialchars($pass_data['whom_to_meet']) ?></span></div>
+                    <div class="col-6"><strong>Host Name:</strong><br><span class="text-success"><?= htmlspecialchars($pass_data['host_name']) ?></span></div>
+                    <div class="col-12"><strong>Appointment Time:</strong><br><span class="text-primary"><?= formatDateTime($pass_data['appointment_time']) ?></span></div>
                 </div>
             </div>
 
@@ -108,21 +122,19 @@ function formatDateTime($dt)
                     <form method="POST">
                         <div class="mb-3">
                             <label class="erp-form-label">Current Status</label>
-                            <div class="p-2 bg-warning text-dark rounded"><i class="fas fa-clock"></i> Waiting for Check-in
-                            </div>
+                            <div class="p-2 bg-warning text-dark rounded"><i class="fas fa-clock"></i> Waiting for Check-in</div>
                         </div>
                         <div class="mb-3">
                             <label class="erp-form-label">Check-in Time</label>
                             <input type="text" id="checkin_time" class="erp-form-control" readonly>
                         </div>
                         <div class="d-grid">
-                            <button type="submit" name="checkin" class="erp-btn erp-btn-success"><i
-                                    class="fas fa-sign-in-alt"></i> Check In Visitor</button>
+                            <button type="submit" name="checkin" class="erp-btn erp-btn-success"><i class="fas fa-sign-in-alt"></i> Check In Visitor</button>
                         </div>
                     </form>
                 <?php elseif ($pass_data['status'] == 'inside'): ?>
                     <div class="alert alert-success">
-                        <h5><i class="fas fa-check-circle"></i> successfully Checked In</h5>
+                        <h5><i class="fas fa-check-circle"></i> Visitor successfully Checked In</h5>
                     </div>
                 <?php else: ?>
                     <div class="alert alert-info">
@@ -137,14 +149,13 @@ function formatDateTime($dt)
 </div>
 
 <script>
-    // Automatically fill the current datetime in Check-in Time field
     function updateCurrentTime() {
         const now = new Date();
         const options = { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true };
         document.getElementById('checkin_time').value = now.toLocaleString('en-US', options);
     }
     updateCurrentTime();
-    setInterval(updateCurrentTime, 1000); // update every second
+    setInterval(updateCurrentTime, 1000);
 </script>
 
 <?php echo erp_footer(); ?>
